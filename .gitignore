@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+.streamlit/secrets.toml
+books_cache/
+diksha_syllabus_raw.json
+.env
