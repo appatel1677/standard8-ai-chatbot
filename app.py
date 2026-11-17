@@ -1,4 +1,4 @@
-import streamlit as st
+﻿import streamlit as st
 import json
 import os
 import io
@@ -61,7 +61,6 @@ def get_pdf_font_path():
         if os.path.exists(path):
             return path
 
-    # Fallback: download Noto Sans Gujarati from Google Fonts GitHub
     font_path = os.path.join(os.getcwd(), "NotoSansGujarati-Regular.ttf")
     if not os.path.exists(font_path):
         try:
@@ -90,27 +89,22 @@ def build_pdf_bytes(messages, subject_name, chapter_name):
     else:
         base_font = "helvetica"
 
-    # Page count for footer
-    total_pages_placeholder = {}
-
     def footer():
         pdf.set_y(-12)
         pdf.set_font(base_font, "", 8)
         pdf.set_text_color(120, 120, 120)
         pdf.cell(0, 6, f"Page {pdf.page_no()}", align="C")
 
-    # Header
     pdf.add_page()
     pdf.set_font(base_font, "B", 16)
     pdf.set_text_color(30, 58, 138)
-    pdf.cell(0, 10, "ધોરણ ૮ - સ્માર્ટ AI સ્ટડી નોટ્સ", ln=True, align="C")
+    pdf.cell(0, 10, "ધોરણ 3 થી 8 - સ્માર્ટ AI સ્ટડી નોટ્સ", ln=True, align="C")
     pdf.set_font(base_font, "", 11)
     pdf.set_text_color(0, 0, 0)
     pdf.cell(0, 7, f"વિષય: {subject_name or 'સામાન્ય'}", ln=True, align="C")
     pdf.cell(0, 7, f"પ્રકરણ: {chapter_name or 'કોઈપણ'}", ln=True, align="C")
     pdf.ln(4)
 
-    # Content
     for msg in messages:
         role = "વિદ્યાર્થી" if msg["role"] == "user" else "શિક્ષક"
         pdf.set_font(base_font, "B", 11)
@@ -121,7 +115,6 @@ def build_pdf_bytes(messages, subject_name, chapter_name):
         pdf.cell(0, 7, role + ":", ln=True)
         pdf.set_font(base_font, "", 10)
         pdf.set_text_color(0, 0, 0)
-        # Multi-cell for wrapped Gujarati text
         pdf.multi_cell(0, 6, msg["content"])
         pdf.ln(2)
 
@@ -130,19 +123,20 @@ def build_pdf_bytes(messages, subject_name, chapter_name):
 
 
 st.set_page_config(
-    page_title="ધોરણ ૮ ગુજરાતી માધ્યમ - સ્માર્ટ AI શિક્ષક",
+    page_title="ધોરણ 3 થી 8 ગુજરાતી માધ્યમ - સ્માર્ટ AI શિક્ષક",
     page_icon="📚",
     layout="wide",
     initial_sidebar_state="auto"
 )
 
-@st.cache_data
+
 def load_syllabus():
     syllabus_path = "diksha_syllabus.json"
     if os.path.exists(syllabus_path):
         with open(syllabus_path, "r", encoding="utf-8") as f:
             return json.load(f)
     return {}
+
 
 syllabus_data = load_syllabus()
 
@@ -162,7 +156,6 @@ html, body, p, h1, h2, h3, h4, h5, h6, input, textarea, button,
     font-family: 'Material Symbols Rounded' !important;
 }
 
-/* Gradient header banner */
 .app-banner {
     background: linear-gradient(135deg, #1E3A8A, #3B82F6);
     color: #ffffff;
@@ -185,7 +178,6 @@ html, body, p, h1, h2, h3, h4, h5, h6, input, textarea, button,
     font-family: 'Noto Sans Gujarati', 'Noto Sans', sans-serif !important;
 }
 
-/* Subject / chapter pill badge */
 .subject-pill {
     display: inline-flex;
     align-items: center;
@@ -202,7 +194,6 @@ html, body, p, h1, h2, h3, h4, h5, h6, input, textarea, button,
 }
 .subject-pill .label { font-weight: 500; opacity: 0.9; }
 
-/* Chat message styling */
 .stChatMessage {
     border-radius: 16px !important;
     padding: 0.85rem 1rem !important;
@@ -223,12 +214,10 @@ html, body, p, h1, h2, h3, h4, h5, h6, input, textarea, button,
     margin-right: 2rem !important;
 }
 
-/* LaTeX / MathJax */
 .mjx-chtml, .mjx-math, .MathJax {
     font-family: 'Noto Sans Gujarati', 'Noto Sans', sans-serif !important;
 }
 
-/* Bottom bar */
 [data-testid="stBottom"] {
     background-color: #ffffff !important;
     border-top: 1px solid #e2e8f0 !important;
@@ -249,39 +238,41 @@ html, body, p, h1, h2, h3, h4, h5, h6, input, textarea, button,
     border: 1px solid #cbd5e1 !important;
 }
 
-/* Mobile responsiveness */
 @media (max-width: 768px) {
     .block-container {
         padding-top: 0.5rem !important;
-        padding-left: 0.75rem !important;
-        padding-right: 0.75rem !important;
+        padding-left: 0.5rem !important;
+        padding-right: 0.5rem !important;
+        max-width: 100% !important;
     }
     .app-banner {
-        padding: 1.1rem 0.9rem;
-        margin-bottom: 0.75rem;
+        padding: 0.9rem 0.75rem;
+        margin-bottom: 0.5rem;
+        border-radius: 12px;
     }
-    .app-banner h1 { font-size: 1.4rem; }
-    .app-banner p { font-size: 0.9rem; }
-    .subject-pill { font-size: 0.85rem; padding: 0.45rem 0.9rem; }
+    .app-banner h1 { font-size: 1.25rem; }
+    .app-banner p { font-size: 0.85rem; }
+    .subject-pill { font-size: 0.8rem; padding: 0.4rem 0.75rem; }
     .stChatMessage {
-        margin: 0.4rem 0 !important;
-        padding: 0.7rem 0.9rem !important;
+        margin: 0.3rem 0 !important;
+        padding: 0.6rem 0.8rem !important;
+        border-radius: 12px !important;
     }
     .stChatMessage[data-testid="stChatMessage"][data-message-role="user"] {
-        margin-left: 1rem !important;
+        margin-left: 0.5rem !important;
     }
     .stChatMessage[data-testid="stChatMessage"][data-message-role="assistant"] {
-        margin-right: 1rem !important;
+        margin-right: 0.5rem !important;
     }
     [data-testid="stBottom"] {
-        padding: 0.6rem 0.75rem !important;
+        padding: 0.5rem 0.5rem !important;
     }
-    [data-testid="stBottom"] .stButton > button {
-        width: 40px !important;
-        height: 40px !important;
+    [data-testid="stSidebar"] {
+        width: 0 !important;
     }
-    .stTextInput input {
-        font-size: 1rem !important;
+    .stChatMessage .stMarkdown {
+        font-size: 0.95rem !important;
+        line-height: 1.6 !important;
     }
 }
 </style>
@@ -290,9 +281,9 @@ html, body, p, h1, h2, h3, h4, h5, h6, input, textarea, button,
 with st.sidebar:
     st.image("https://img.icons8.com/color/96/school.png", width=70)
     st.markdown("### 🎓 સ્માર્ટ AI શિક્ષક")
-    st.markdown("ગુજરાત રાજ્ય શાળા પાઠ્યપુસ્તક મંડળ (GCERT) અને **DIKSHA** આધારિત ધોરણ ૮.")
+    st.markdown("ગુજરાત રાજ્ય શાળા પાઠ્યપુસ્તક મંડળ (GCERT) અને **DIKSHA** આધારિત ધોરણ 3 થી 8.")
     st.divider()
-    
+
     def _clean_keys(raw):
         if not raw:
             return []
@@ -312,46 +303,87 @@ with st.sidebar:
         if not single_raw:
             single_raw = os.environ.get("GEMINI_API_KEY", "")
         api_keys = _clean_keys(single_raw)
-    
+
     st.divider()
     model_choice = st.selectbox(
         "🤖 AI મોડેલ પસંદ કરો:",
-        ["gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-2.5-flash"],
-        index=0
+        ["gemini-2.5-flash", "gemini-3.5-flash-lite", "gemini-3.5-flash"],
+        index=0,
+        key="model_choice_select"
     )
-    
+
     st.divider()
-    
-    if syllabus_data:
-        subject_names = list(syllabus_data.keys())
-        selected_subject_name = st.selectbox("📖 વિષય પસંદ કરો:", subject_names)
-        subject_info = syllabus_data[selected_subject_name]
+
+    # Grade selection
+    grade_choice = st.selectbox(
+        "🎓 ધોરણ પસંદ કરો:",
+        ["ધોરણ 3", "ધોરણ 4", "ધોરણ 5", "ધોરણ 6", "ધોરણ 7", "ધોરણ 8"],
+        index=5,
+        key="grade_select"
+    )
+    grade_num = int(grade_choice.split()[-1])
+
+    st.divider()
+
+    # Load syllabus based on grade
+    grade_data = syllabus_data.get(grade_choice, {})
+    active_syllabus = grade_data.get("subjects", {}) if isinstance(grade_data, dict) else {}
+
+    if active_syllabus:
+        subject_names = list(active_syllabus.keys())
+        selected_subject_name = st.selectbox(
+            "📖 વિષય પસંદ કરો:",
+            subject_names,
+            key=f"subject_select_{grade_num}"
+        )
+        subject_info = active_syllabus[selected_subject_name]
         chapters = subject_info.get("chapters", [])
         chapter_names = [ch["name"] for ch in chapters]
-        
-        selected_chapter_name = st.selectbox("📑 પ્રકરણ પસંદ કરો:", ["બધા પ્રકરણો / સામાન્ય પ્રશ્ન"] + chapter_names)
-        
-        selected_chapter_obj = None
-        if selected_chapter_name != "બધા પ્રકરણો / સામાન્ય પ્રશ્ન":
-            for ch in chapters:
-                if ch["name"] == selected_chapter_name:
-                    selected_chapter_obj = ch
-                    break
+
+        # Clean format: "પ્રકરણ X: <Chapter Name>"
+        chapter_display = []
+        for idx, ch in enumerate(chapters, 1):
+            name = ch.get("name", "").strip()
+            clean_title = re.sub(r'^(?:પ્રકરણ\s*\d+\s*[:\-\.]\s*|\d+[\.\)]\s*)', '', name).strip()
+            if clean_title:
+                chapter_display.append(f"પ્રકરણ {idx}: {clean_title}")
+            else:
+                chapter_display.append(f"પ્રકરણ {idx}")
+
+        options_list = ["બધા પ્રકરણો / સામાન્ય પ્રશ્ન"] + chapter_display
+        selected_chapter_idx = st.selectbox(
+            "📑 પ્રકરણ પસંદ કરો:",
+            range(len(options_list)),
+            format_func=lambda i: options_list[i],
+            index=0,
+            key=f"chapter_select_{grade_num}_{selected_subject_name}"
+        )
+
+        if selected_chapter_idx == 0:
+            selected_chapter_name = "બધા પ્રકરણો / સામાન્ય પ્રશ્ન"
+            selected_chapter_obj = None
+        else:
+            selected_chapter_name = chapter_names[selected_chapter_idx - 1]
+            selected_chapter_obj = chapters[selected_chapter_idx - 1]
     else:
         selected_subject_name = None
         selected_chapter_obj = None
-        st.warning("⚠️ diksha_syllabus.json ફાઈલ મળી નથી.")
+        st.warning("⚠️ સિલેબસ મળી નથી. કૃપા કરીને પહેલા build_syllabus.py રન કરો.")
 
     st.divider()
     st.markdown("### 🛠️ ક્વિક સ્ટડી ટૂલ્સ")
     quick_action = None
     col_q1, col_q2 = st.columns(2)
     with col_q1:
-        if st.button("📖 સારાંશ"): quick_action = "summary"
-        if st.button("📝 MCQ ટેસ્ટ"): quick_action = "mcq"
+        if st.button("📖 સારાંશ"):
+            quick_action = "summary"
+        if st.button("📝 MCQ ટેસ્ટ"):
+            quick_action = "mcq"
     with col_q2:
-        if st.button("📝 સ્વાધ્યાય"): quick_action = "exercise"
-        if st.button("💡 સરળ ઉદાહરણ"): quick_action = "easy_example"
+        if st.button("📝 સ્વાધ્યાય"):
+            quick_action = "exercise"
+        if st.button("💡 સરળ ઉદાહરણ"):
+            quick_action = "easy_example"
 
     st.divider()
     st.markdown("### 🔧 યુટિલિટી")
@@ -361,28 +393,44 @@ with st.sidebar:
         st.session_state.pop("mcq_user_answers", None)
         st.session_state.pop("mcq_checked", None)
         st.rerun()
+
     col_u1, col_u2 = st.columns([1, 2])
     with col_u1:
-        dl_format = st.selectbox("ફોર્મેટ", [".pdf", ".txt", ".md"], index=0, key="dl_format", label_visibility="collapsed")
+        dl_format = st.selectbox(
+            "ફોર્મેટ",
+            [".pdf", ".txt", ".md"],
+            index=0,
+            key="dl_format",
+            label_visibility="collapsed"
+        )
     with col_u2:
         dl_clicked = st.button("📥 નોટ્સ ડાઉનલોડ કરો", use_container_width=True)
+
     notes_text = ""
     if st.session_state.get("messages"):
-        lines = [f"# ધોરણ ૮ ગુજરાતી માધ્યમ - નોટ્સ", f"વિષય: {selected_subject_name or 'સામાન્ય'}",
-                 f"પ્રકરણ: {selected_chapter_obj['name'] if selected_chapter_obj else 'કોઈપણ'}", "",
-                 "## ચેટ ઇતિહાસ / નોટ્સ", ""]
+        lines = [
+            "# ધોરણ 3 થી 8 ગુજરાતી માધ્યમ - નોટ્સ",
+            f"વિષય: {selected_subject_name or 'સામાન્ય'}",
+            f"પ્રકરણ: {selected_chapter_obj['name'] if selected_chapter_obj else 'કોઈપણ'}",
+            "",
+            "## ચેટ ઇતિહાસ / નોટ્સ",
+            ""
+        ]
         for msg in st.session_state.messages:
             role = "વિદ્યાર્થી" if msg["role"] == "user" else "શિક્ષક"
             lines.append(f"### {role}")
             lines.append(msg["content"])
             lines.append("")
         notes_text = "\n".join(lines)
+
     if notes_text and dl_clicked:
         if dl_format == ".pdf":
             chapter_name = selected_chapter_obj['name'] if selected_chapter_obj else 'કોઈપણ'
-            pdf_bytes = build_pdf_bytes(st.session_state.messages,
-                                        selected_subject_name or 'સામાન્ય',
-                                        chapter_name)
+            pdf_bytes = build_pdf_bytes(
+                st.session_state.messages,
+                selected_subject_name or 'સામાન્ય',
+                chapter_name
+            )
             st.download_button(
                 "📥 નોટ્સ ડાઉનલોડ કરો",
                 data=pdf_bytes,
@@ -401,7 +449,7 @@ with st.sidebar:
 
 st.markdown('''
 <div class="app-banner">
-    <h1>📚 ધોરણ ૮ સ્માર્ટ AI શિક્ષક</h1>
+    <h1>📚 ધોરણ 3 થી 8 સ્માર્ટ AI શિક્ષક</h1>
     <p>તમારા બધા જ વિષયોના પ્રશ્નો, સ્વાધ્યાય ઉકેલ, અને માર્ગદર્શન માટેનો ડિજિટલ સાથી.</p>
 </div>
 ''', unsafe_allow_html=True)
@@ -420,7 +468,7 @@ if selected_subject_name:
     ch_text = selected_chapter_obj['name'] if selected_chapter_obj else 'કોઈપણ'
     st.markdown(f'''
     <div class="subject-pill">
-        <span class="label">📌 {selected_subject_name}</span>
+        <span class="label">🎓 {grade_choice} | 📌 {selected_subject_name}</span>
         <span>|</span>
         <span>{ch_text}</span>
     </div>
@@ -437,13 +485,13 @@ chapter_label = selected_chapter_obj['name'] if selected_chapter_obj else 'આ�
 
 if quick_action and selected_subject_name:
     prompt_map = {
-        "summary": f"{selected_subject_name} ના પ્રકરણ '{chapter_label}' નો સરસ અને સરળ ગુજરાતીમાં મુદ્દાસર સારાંશ આપો.",
-        "exercise": f"{selected_subject_name} ના પ્રકરણ '{chapter_label}' ના સ્વાધ્યાયના પ્રશ્નો અને તેના સાચા જવાબો સમજૂતી સાથે આપો.",
-        "mcq": f"{selected_subject_name} ના પ્રકરણ '{chapter_label}' આધારિત ગુજરાતીમાં ૫ MCQ (બહુવિકલ્પી) પ્રશ્નો બનાવો. દરેક પ્રશ્નમાં ૪ વિકલ્પો (A, B, C, D) હોય. નીચેના ફોર્મેટમાં જ લખો:\n\nપ્રશ્ન 1: પ્રશ્ન લખો?\nA. વિકલ્પ 1\nB. વિકલ્પ 2\nC. વિકલ્પ 3\nD. વિકલ્પ 4\nસાચો જવાબ: B\nસમજૂતી: સરળ સમજૂતી.\n\nઆ પ્રકારે તમામ ૫ પ્રશ્નો લખો.",
-        "easy_example": f"{selected_subject_name} ના પ્રકરણ '{chapter_label}' નું સરળ ભાષામાં વાસ્તવિક જીવનના ઉદાહરણો દ્વારા સમજૂતી આપો જેથી ધોરણ ૮ નું વિદ્યાર્થી સરળતાથી સમજી શકે. ગુજરાતીમાં લખો. ગણિત અથવા વિજ્ઞાન હોય તો સૂત્રો $...$ (LaTeX) નો ઉપયોગ કરો.",
-        "imp": f"{selected_subject_name} ના પ્રકરણ '{chapter_label}' માંથી વાર્ષિક પરીક્ષા માટે અતિ મહત્વના (IMP) પ્રશ્નો અને ઉત્તરો જણાવો.",
-        "formulas": f"{selected_subject_name} ના પ્રકરણ '{chapter_label}' ના તમામ મહત્વના સૂત્રો, નિયમો અથવા વ્યાકરણના મુદ્દાઓની યાદી બનાવીને સમજાવો.",
-        "nmms": f"{selected_subject_name} માટે NMMS સ્કોલરશીપ પરીક્ષામાં પૂછાઈ શકે તેવા મહત્વના પ્રશ્નો અને શોર્ટકટ ટ્રીક્સ ગુજરાતીમાં સમજાવો."
+        "summary": f"{grade_choice} ના વિષય '{selected_subject_name}' ના પ્રકરણ '{chapter_label}' નો સરસ અને સરળ ગુજરાતીમાં મુદ્દાસર સારાંશ આપો.",
+        "exercise": f"{grade_choice} ના વિષય '{selected_subject_name}' ના પ્રકરણ '{chapter_label}' ના સ્વાધ્યાયના પ્રશ્નો અને તેના સાચા જવાબો સમજૂતી સાથે આપો.",
+        "mcq": f"{grade_choice} ના વિષય '{selected_subject_name}' ના પ્રકરણ '{chapter_label}' આધારિત ગુજરાતીમાં ૫ MCQ (બહુવિકલ્પી) પ્રશ્નો બનાવો. દરેક પ્રશ્નમાં ૪ વિકલ્પો (A, B, C, D) હોય. નીચેના ફોર્મેટમાં જ લખો:\n\nપ્રશ્ન 1: પ્રશ્ન લખો?\nA. વિકલ્પ 1\nB. વિકલ્પ 2\nC. વિકલ્પ 3\nD. વિકલ્પ 4\nસાચો જવાબ: B\nસમજૂતી: સરળ સમજૂતી.\n\nઆ પ્રકારે તમામ ૫ પ્રશ્નો લખો.",
+        "easy_example": f"{grade_choice} ના વિષય '{selected_subject_name}' ના પ્રકરણ '{chapter_label}' નું સરળ ભાષામાં વાસ્તવિક જીવનના ઉદાહરણો દ્વારા સમજૂતી આપો જેથી {grade_choice} નું વિદ્યાર્થી સરળતાથી સમજી શકે. ગુજરાતીમાં લખો. ગણિત અથવા વિજ્ઞાન હોય તો સૂત્રો $...$ (LaTeX) નો ઉપયોગ કરો.",
+        "imp": f"{grade_choice} ના વિષય '{selected_subject_name}' ના પ્રકરણ '{chapter_label}' માંથી વાર્ષિક પરીક્ષા માટે અતિ મહત્વના (IMP) પ્રશ્નો અને ઉત્તરો જણાવો.",
+        "formulas": f"{grade_choice} ના વિષય '{selected_subject_name}' ના પ્રકરણ '{chapter_label}' ના તમામ મહત્વના સૂત્રો, નિયમો અથવા વ્યાકરણના મુદ્દાઓની યાદી બનાવીને સમજાવો.",
+        "nmms": f"{grade_choice} ના વિષય '{selected_subject_name}' માટે NMMS સ્કોલરશીપ પરીક્ષામાં પૂછાઈ શકે તેવા મહત્વના પ્રશ્નો અને શોર્ટકટ ટ્રીક્સ ગુજરાતીમાં સમજાવો."
     }
     action_prompt = prompt_map.get(quick_action, "")
     if action_prompt:
@@ -453,12 +501,10 @@ if quick_action and selected_subject_name:
             st.session_state.mcq_checked = False
         st.session_state.messages.append({"role": "user", "content": action_prompt})
 
-# Render chat history messages first
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# Interactive MCQ quiz renderer
 if st.session_state.get("mcq_questions"):
     st.divider()
     st.markdown("### 📝 MCQ ટેસ્ટ - ૫ પ્રશ્નો")
@@ -470,6 +516,7 @@ if st.session_state.get("mcq_questions"):
         idx = option_keys.index(current) if current in option_keys else None
         choice = st.radio("સાચો વિકલ્પ પસંદ કરો:", option_labels, index=idx, key=f"mcq_radio_{i}")
         st.session_state.mcq_user_answers[i] = choice[0] if choice else None
+
     col_c1, col_c2 = st.columns(2)
     with col_c1:
         if st.button("🏆 સ્કોર તપાસો", key="check_mcq_btn"):
@@ -480,9 +527,12 @@ if st.session_state.get("mcq_questions"):
             st.session_state.mcq_user_answers = {}
             st.session_state.mcq_checked = False
             st.rerun()
+
     if st.session_state.mcq_checked:
-        score = sum(1 for i, q in enumerate(st.session_state.mcq_questions)
-                    if st.session_state.mcq_user_answers.get(i) == q["answer"])
+        score = sum(
+            1 for i, q in enumerate(st.session_state.mcq_questions)
+            if st.session_state.mcq_user_answers.get(i) == q["answer"]
+        )
         st.success(f"🎯 તમારો સ્કોર: **{score} / {len(st.session_state.mcq_questions)}**")
         for i, q in enumerate(st.session_state.mcq_questions):
             user_ans = st.session_state.mcq_user_answers.get(i)
@@ -496,7 +546,6 @@ if st.session_state.get("mcq_questions"):
                 if q.get("explanation"):
                     st.markdown(f"💡 સમજૂતી: {q['explanation']}")
 
-# Bottom attachment preview badge above bottom bar
 attached_file = st.session_state.get("bottom_uploader") or st.session_state.get("bottom_camera")
 
 if attached_file:
@@ -519,13 +568,42 @@ if attached_file:
                 st.session_state.pop("bottom_camera", None)
                 st.rerun()
 
-# Unified single-row bottom bar inside st.bottom
 if "input_counter" not in st.session_state:
     st.session_state.input_counter = 0
 
 bottom_container = getattr(st, "bottom", st.container())
 with bottom_container:
-    col_plus, col_input, col_send = st.columns([1, 10, 1.5], vertical_alignment="center")
+    col_mic, col_plus, col_input, col_send = st.columns([1, 1, 10, 1.5], vertical_alignment="center")
+    with col_mic:
+        mic_html = '''
+        <button id="micBtn" onclick="startMic()" style="border-radius:50%;width:42px;height:42px;border:1px solid #cbd5e1;background:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:18px;box-shadow:0 2px 4px rgba(0,0,0,0.05);">🎤</button>
+        <script>
+        function startMic() {
+            if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+                alert('બ્રાઉઝર વૉઇસ ઇનપુટ સપોર્ટ કરતું નથી');
+                return;
+            }
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            const recognition = new SpeechRecognition();
+            recognition.lang = 'gu-IN';
+            recognition.interimResults = false;
+            recognition.maxAlternatives = 1;
+            recognition.onresult = function(event) {
+                const transcript = event.results[0][0].transcript;
+                const inputs = document.querySelectorAll('input[type="text"]');
+                if (inputs.length > 0) {
+                    inputs[inputs.length-1].value = transcript;
+                    inputs[inputs.length-1].dispatchEvent(new Event('input', { bubbles: true }));
+                }
+            };
+            recognition.onerror = function(event) { console.log('Speech error:', event.error); };
+            recognition.start();
+            document.getElementById('micBtn').style.background = '#FEE2E2';
+            recognition.onend = function() { document.getElementById('micBtn').style.background = '#fff'; };
+        }
+        </script>
+        '''
+        st.components.v1.html(mic_html, height=60)
     with col_plus:
         with st.popover("➕"):
             st.file_uploader("📁 ગેલેરી / PDF / ફાઈલ પસંદ કરો", type=None, key="bottom_uploader")
@@ -555,8 +633,9 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "user"
             else:
                 try:
                     system_instruction = f"""
-તમે ગુજરાત રાજ્ય શાળા પાઠ્યપુસ્તક મંડળ (GCERT) અભ્યાસક્રમ આધારિત ધોરણ ૮ (ગુજરાતી માધ્યમ) ના નિષ્ણાત અને મૈત્રીપૂર્ણ AI શિક્ષક છો.
+તમે ગુજરાત રાજ્ય શાળા પાઠ્યપુસ્તક મંડળ (GCERT) અભ્યાસક્રમ આધારિત {grade_choice} (ગુજરાતી માધ્યમ) ના નિષ્ણાત અને મૈત્રીપૂર્ણ AI શિક્ષક છો.
 વિદ્યાર્થીઓને હંમેશા સરળ, સ્પષ્ટ અને સચોટ ગુજરાતી ભાષામાં સ્ટેપ-બાય-સ્ટેપ સમજૂતી આપો.
+વર્તમાન પસંદ કરેલ ધોરણ: {grade_choice}
 વર્તમાન પસંદ કરેલ વિષય: {selected_subject_name if selected_subject_name else 'સામાન્ય'}
 પ્રકરણ: {selected_chapter_obj['name'] if selected_chapter_obj else 'કોઈપણ'}
 MCQ જવાબ પાદતરમાં હોય તો 'સાચો જવાબ: X' ફોર્મેટ અને સમજૂતી આપો. ગણિત/વિજ્ઞાનના સૂત્રો $...$ (LaTeX) નો ઉપયોગ કરો.
@@ -568,12 +647,17 @@ MCQ જવાબ પાદતરમાં હોય તો 'સાચો જવ�
                             file_bytes = current_attachment.getvalue() if hasattr(current_attachment, "getvalue") else current_attachment.read()
                             if hasattr(current_attachment, "seek"):
                                 current_attachment.seek(0)
-                            
+
                             ftype = getattr(current_attachment, "type", "")
                             if ftype and ftype.startswith("image/"):
                                 contents.append(Image.open(io.BytesIO(file_bytes)))
                             elif ftype == "application/pdf":
-                                contents.append("[અપલોડ કરેલી PDF ફાઈલ સંલગ્ન છે]")
+                                contents.append(
+                                    types.Part.from_bytes(
+                                        data=file_bytes,
+                                        mime_type="application/pdf"
+                                    )
+                                )
                             else:
                                 try:
                                     contents.append(Image.open(io.BytesIO(file_bytes)))
@@ -581,21 +665,24 @@ MCQ જવાબ પાદતરમાં હોય તો 'સાચો જવ�
                                     contents.append("[અપલોડ કરેલી ફાઈલ સંલગ્ન છે]")
                         except Exception as file_err:
                             contents.append(f"[ફાઈલ જોડવામાં ભૂલ: {file_err}]")
-                    
-                    # Clear attachment after sending
+
                     st.session_state.pop("bottom_uploader", None)
                     st.session_state.pop("bottom_camera", None)
-                    
+
                     history_text = ""
                     for msg in st.session_state.messages[:-1]:
                         history_text += f"{'વિદ્યાર્થી' if msg['role'] == 'user' else 'શિક્ષક'}: {msg['content']}\n"
-                    
+
                     full_prompt = f"{system_instruction}\n\nઇતિહાસ:\n{history_text}\nપ્રશ્ન: {last_user_msg}"
                     contents.append(full_prompt)
-                    
-                    available_models = ["gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-2.5-flash"]
-                    stream_obj = None
+
+                    all_models = ["gemini-2.5-flash", "gemini-3.5-flash-lite", "gemini-3.5-flash"]
+                    available_models = [model_choice] + [m for m in all_models if m != model_choice]
+
+                    answer_text = ""
+                    success = False
                     last_error = None
+                    placeholder = st.empty()
 
                     for cur_key in api_keys:
                         key_client = genai.Client(api_key=cur_key)
@@ -605,34 +692,36 @@ MCQ જવાબ પાદતરમાં હોય તો 'સાચો જવ�
                                     model=cur_model,
                                     contents=contents
                                 )
+                                temp_text = ""
+                                for chunk in stream_obj:
+                                    if chunk.text:
+                                        temp_text += chunk.text
+                                        placeholder.markdown(temp_text + "▌")
+                                placeholder.markdown(temp_text)
+                                answer_text = temp_text
+                                success = True
                                 break
                             except Exception as err:
                                 last_error = err
                                 err_str = str(err)
+                                placeholder.empty()
                                 if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
-                                    break  # rotate to next API key
-                                elif "503" in err_str or "UNAVAILABLE" in err_str:
-                                    continue  # try next model with same key
+                                    break
+                                elif "503" in err_str or "UNAVAILABLE" in err_str or "500" in err_str or "404" in err_str:
+                                    continue
                                 else:
                                     raise err
-                        if stream_obj is not None:
+                        if success:
                             break
 
-                    if stream_obj is None:
-                        err_msg = "❌ તમામ API કી ની ક્વોટા સમાપ્ત થઈ ગઈ છે. કૃપા કરીને થોડા સમય પછી પ્રયત્ન કરો."
+                    if not success:
+                        err_msg = f"❌ સર્વર પર અત્યારે વધુ ટ્રાફિક છે. કૃપા કરીને થોડી સેકન્ડ પછી ફરી પ્રયત્ન કરો. ({last_error})"
                         st.error(err_msg)
                         st.session_state.messages.append({"role": "assistant", "content": err_msg})
                         st.stop()
 
-                    def response_generator():
-                        for chunk in stream_obj:
-                            if chunk.text:
-                                yield chunk.text
-                    
-                    answer_text = st.write_stream(response_generator())
                     st.session_state.messages.append({"role": "assistant", "content": answer_text})
-                    
-                    # Auto-parse MCQ if this turn was an MCQ request
+
                     if quick_action == "mcq" and st.session_state.mcq_questions is None:
                         parsed = parse_mcq(answer_text)
                         if parsed:
