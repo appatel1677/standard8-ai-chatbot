@@ -93,7 +93,7 @@ def build_pdf_bytes(messages, subject_name, chapter_name):
     pdf.set_font(base_font, "", 11)
     pdf.set_text_color(0, 0, 0)
     pdf.cell(0, 7, f"વિષય: {subject_name or 'સામાન્ય'}", ln=True, align="C")
-    pdf.cell(0, 7, f"પ્રકરણ: {chapter_name or 'કોઈપણ'}", ln=True, align="C")
+    pdf.cell(0, 7, f"પ્રકરણ: {chapter_name or 'બધા પ્રકરણો'}", ln=True, align="C")
     pdf.ln(4)
 
     for msg in messages:
@@ -112,16 +112,39 @@ def build_pdf_bytes(messages, subject_name, chapter_name):
     return bytes(pdf.output(dest="S"))
 
 
+def transcribe_audio_gujarati(audio_bytes, api_keys):
+    """Convert recorded Gujarati speech audio into Gujarati text using Gemini."""
+    if not HAS_GENAI or not api_keys:
+        return ""
+    prompt = (
+        "આ ઓડિયોમાં વિદ્યાર્થી જે બોલ્યા છે તે ફક્ત ગુજરાતી લિપિમાં લખો. "
+        "બીજું કોઈ વધારાનું લખાણ કે સમજૂતી લખશો નહીં, ફક્ત બોલાયેલા શબ્દો જ લખો."
+    )
+    for cur_key in api_keys:
+        try:
+            client = genai.Client(api_key=cur_key)
+            resp = client.models.generate_content(
+                model="gemini-2.5-flash-lite",
+                contents=[
+                    types.Part.from_bytes(data=audio_bytes, mime_type="audio/wav"),
+                    prompt
+                ]
+            )
+            if resp and resp.text:
+                return resp.text.strip()
+        except Exception:
+            continue
+    return ""
+
+
 st.set_page_config(
     page_title="ધોરણ 3 થી 8 ગુજરાતી માધ્યમ - સ્માર્ટ AI શિક્ષક",
     page_icon="📚",
     layout="wide",
-    initial_sidebar_state="auto"
+    initial_sidebar_state="collapsed"
 )
 
 
-# Cache syllabus in memory so app runs super fast on every click
-@st.cache_data
 def load_syllabus():
     syllabus_path = "diksha_syllabus.json"
     if os.path.exists(syllabus_path):
@@ -131,6 +154,26 @@ def load_syllabus():
 
 
 syllabus_data = load_syllabus()
+
+
+def get_all_grades_reference_text(data):
+    """Build compact reference of ALL Grades (3 to 8) GCERT chapters from diksha_syllabus.json."""
+    if not data:
+        return ""
+    lines = ["GCERT ધોરણ 3 થી 8 નો સત્તાવાર અભ્યાસક્રમ (અનુક્રમણિકા):"]
+    for grade_key, g_info in data.items():
+        subjs = g_info.get("subjects", {})
+        if not subjs:
+            continue
+        lines.append(f"\n[{grade_key}]")
+        for subj, info in subjs.items():
+            ch_names = [c["name"] for c in info.get("chapters", [])]
+            if ch_names:
+                lines.append(f"- {subj}: {', '.join(ch_names)}")
+    return "\n".join(lines)
+
+
+ALL_GRADES_REF = get_all_grades_reference_text(syllabus_data)
 
 st.markdown("""
 <style>
@@ -414,60 +457,56 @@ with st.sidebar:
 
     st.divider()
 
-    # Grade selection
+    grade_options = ["🎯 આપમેળે ઓળખો (Auto)", "ધોરણ 3", "ધોરણ 4", "ધોરણ 5", "ધોરણ 6", "ધોરણ 7", "ધોરણ 8"]
     grade_choice = st.selectbox(
-        "🎓 ધોરણ પસંદ કરો:",
-        ["ધોરણ 3", "ધોરણ 4", "ધોરણ 5", "ધોરણ 6", "ધોરણ 7", "ધોરણ 8"],
-        index=5,
+        "🎓 ધોરણ પસંદ કરો (વૈકલ્પિક):",
+        grade_options,
+        index=0,
         key="grade_select"
     )
-    grade_num = int(grade_choice.split()[-1])
 
     st.divider()
 
-    # Load syllabus based on grade
-    grade_data = syllabus_data.get(grade_choice, {})
-    active_syllabus = grade_data.get("subjects", {}) if isinstance(grade_data, dict) else {}
+    is_auto_mode = (grade_choice == "🎯 આપમેળે ઓળખો (Auto)")
+    selected_subject_name = None
+    selected_chapter_obj = None
+    chapters = []
 
-    if active_syllabus:
-        subject_names = list(active_syllabus.keys())
-        selected_subject_name = st.selectbox(
-            "📖 વિષય પસંદ કરો:",
-            subject_names,
-            key=f"subject_select_{grade_num}"
-        )
-        subject_info = active_syllabus[selected_subject_name]
-        chapters = subject_info.get("chapters", [])
-        chapter_names = [ch["name"] for ch in chapters]
+    if not is_auto_mode:
+        grade_num = int(grade_choice.split()[-1])
+        grade_data = syllabus_data.get(grade_choice, {})
+        active_syllabus = grade_data.get("subjects", {}) if isinstance(grade_data, dict) else {}
 
-        chapter_display = []
-        for idx, ch in enumerate(chapters, 1):
-            name = ch.get("name", "").strip()
-            clean_title = re.sub(r'^(?:પ્રકરણ\s*\d+\s*[:\-\.]\s*|\d+[\.\)]\s*)', '', name).strip()
-            if clean_title:
-                chapter_display.append(f"પ્રકરણ {idx}: {clean_title}")
-            else:
-                chapter_display.append(f"પ્રકરણ {idx}")
+        if active_syllabus:
+            subject_names = list(active_syllabus.keys())
+            selected_subject_name = st.selectbox(
+                "📖 વિષય પસંદ કરો:",
+                subject_names,
+                key=f"subject_select_{grade_num}"
+            )
+            subject_info = active_syllabus[selected_subject_name]
+            chapters = subject_info.get("chapters", [])
+            chapter_names = [ch["name"] for ch in chapters]
 
-        options_list = ["બધા પ્રકરણો / સામાન્ય પ્રશ્ન"] + chapter_display
-        selected_chapter_idx = st.selectbox(
-            "📑 પ્રકરણ પસંદ કરો:",
-            range(len(options_list)),
-            format_func=lambda i: options_list[i],
-            index=0,
-            key=f"chapter_select_{grade_num}_{selected_subject_name}"
-        )
+            chapter_display = []
+            for idx, ch in enumerate(chapters, 1):
+                name = ch.get("name", "").strip()
+                clean_title = re.sub(r'^(?:પ્રકરણ\s*\d+\s*[:\-\.]\s*|\d+[\.\)]\s*)', '', name).strip()
+                chapter_display.append(f"પ્રકરણ {idx}: {clean_title}" if clean_title else f"પ્રકરણ {idx}")
 
-        if selected_chapter_idx == 0:
-            selected_chapter_name = "બધા પ્રકરણો / સામાન્ય પ્રશ્ન"
-            selected_chapter_obj = None
-        else:
-            selected_chapter_name = chapter_names[selected_chapter_idx - 1]
-            selected_chapter_obj = chapters[selected_chapter_idx - 1]
+            options_list = ["બધા પ્રકરણો / સામાન્ય પ્રશ્ન"] + chapter_display
+            selected_chapter_idx = st.selectbox(
+                "📑 પ્રકરણ પસંદ કરો:",
+                range(len(options_list)),
+                format_func=lambda i: options_list[i],
+                index=0,
+                key=f"chapter_select_{grade_num}_{selected_subject_name}"
+            )
+
+            if selected_chapter_idx > 0:
+                selected_chapter_obj = chapters[selected_chapter_idx - 1]
     else:
-        selected_subject_name = None
-        selected_chapter_obj = None
-        st.warning("⚠️ સિલેબસ મળી નથી. કૃપા કરીને પહેલા build_syllabus.py રન કરો.")
+        st.info("💡 **સ્માર્ટ મોડ ચાલુ છે:** તમે ડ્રોપડાઉન પસંદ કર્યા વગર પણ સીધો કોઈ પણ ધોરણ કે વિષયનો પ્રશ્ન પૂછી શકો છો!")
 
     st.divider()
     st.markdown("### 🛠️ ક્વિક સ્ટડી ટૂલ્સ")
@@ -511,7 +550,7 @@ with st.sidebar:
         lines = [
             "# ધોરણ 3 થી 8 ગુજરાતી માધ્યમ - નોટ્સ",
             f"વિષય: {selected_subject_name or 'સામાન્ય'}",
-            f"પ્રકરણ: {selected_chapter_obj['name'] if selected_chapter_obj else 'કોઈપણ'}",
+            f"પ્રકરણ: {selected_chapter_obj['name'] if selected_chapter_obj else 'બધા પ્રકરણો'}",
             "",
             "## ચેટ ઇતિહાસ / નોટ્સ",
             ""
@@ -525,7 +564,7 @@ with st.sidebar:
 
     if notes_text and dl_clicked:
         if dl_format == ".pdf":
-            chapter_name = selected_chapter_obj['name'] if selected_chapter_obj else 'કોઈપણ'
+            chapter_name = selected_chapter_obj['name'] if selected_chapter_obj else 'બધા પ્રકરણો'
             pdf_bytes = build_pdf_bytes(
                 st.session_state.messages,
                 selected_subject_name or 'સામાન્ય',
@@ -550,7 +589,7 @@ with st.sidebar:
 st.markdown('''
 <div class="app-banner">
     <h1>📚 ધોરણ 3 થી 8 સ્માર્ટ AI શિક્ષક</h1>
-    <p>તમારા બધા જ વિષયોના પ્રશ્નો, સ્વાધ્યાય ઉકેલ, અને માર્ગદર્શન માટેનો ડિજિટલ સાથી.</p>
+    <p>ગુજરાતી માધ્યમના બધા જ વિષયો માટે — સીધો પ્રશ્ન પૂછો, બોલીને પૂછો અથવા ફોટો અપલોડ કરો!</p>
 </div>
 ''', unsafe_allow_html=True)
 
@@ -567,22 +606,30 @@ if "show_voice_recorder" not in st.session_state:
 if "audio_counter" not in st.session_state:
     st.session_state.audio_counter = 0
 
-if selected_subject_name:
-    ch_text = selected_chapter_obj['name'] if selected_chapter_obj else 'કોઈપણ'
+if not is_auto_mode and selected_subject_name:
+    ch_text = selected_chapter_obj['name'] if selected_chapter_obj else 'બધા પ્રકરણો'
     st.markdown(f'''
     <div class="subject-pill">
         <span>🎓 {grade_choice} | 📌 {selected_subject_name} | {ch_text}</span>
     </div>
     ''', unsafe_allow_html=True)
+else:
+    st.markdown('''
+    <div class="subject-pill">
+        <span>✨ સ્માર્ટ મોડ (ધોરણ 3 થી 8) — સીધો તમારો પ્રશ્ન નીચે લખો કે બોલો!</span>
+    </div>
+    ''', unsafe_allow_html=True)
 
-chapter_label = selected_chapter_obj['name'] if selected_chapter_obj else 'આખા અભ્યાસક્રમ'
+target_grade = "ધોરણ 3 થી 8" if is_auto_mode else grade_choice
+target_subject = selected_subject_name if selected_subject_name else "સંબંધિત વિષય"
+chapter_label = selected_chapter_obj['name'] if selected_chapter_obj else "છેલ્લી ચર્ચા મુજબના પ્રકરણ"
 
-if quick_action and selected_subject_name:
+if quick_action:
     prompt_map = {
-        "summary": f"{grade_choice} ના વિષય '{selected_subject_name}' ના પ્રકરણ '{chapter_label}' નો સરસ અને સરળ ગુજરાતીમાં મુદ્દાસર સારાંશ આપો.",
-        "exercise": f"{grade_choice} ના વિષય '{selected_subject_name}' ના પ્રકરણ '{chapter_label}' ના સ્વાધ્યાયના પ્રશ્નો અને તેના સાચા જવાબો સમજૂતી સાથે આપો.",
-        "mcq": f"{grade_choice} ના વિષય '{selected_subject_name}' ના પ્રકરણ '{chapter_label}' આધારિત ગુજરાતીમાં ૫ MCQ (બહુવિકલ્પી) પ્રશ્નો બનાવો. દરેક પ્રશ્નમાં ૪ વિકલ્પો (A, B, C, D) હોય. નીચેના ફોર્મેટમાં જ લખો:\n\nપ્રશ્ન 1: પ્રશ્ન લખો?\nA. વિકલ્પ 1\nB. વિકલ્પ 2\nC. વિકલ્પ 3\nD. વિકલ્પ 4\nસાચો જવાબ: B\nસમજૂતી: સરળ સમજૂતી.\n\nઆ પ્રકારે તમામ ૫ પ્રશ્નો લખો.",
-        "easy_example": f"{grade_choice} ના વિષય '{selected_subject_name}' ના પ્રકરણ '{chapter_label}' નું સરળ ભાષામાં વાસ્તવિક જીવનના ઉદાહરણો દ્વારા સમજૂતી આપો જેથી {grade_choice} નું વિદ્યાર્થી સરળતાથી સમજી શકે. ગુજરાતીમાં લખો. ગણિત અથવા વિજ્ઞાન હોય તો સૂત્રો $...$ (LaTeX) નો ઉપયોગ કરો.",
+        "summary": f"{target_grade} ના {target_subject} ના '{chapter_label}' નો સરસ અને સરળ ગુજરાતીમાં મુદ્દાસર સારાંશ આપો.",
+        "exercise": f"{target_grade} ના {target_subject} ના '{chapter_label}' ના સ્વાધ્યાયના પ્રશ્નો અને તેના સાચા જવાબો સમજૂતી સાથે આપો.",
+        "mcq": f"{target_grade} ના {target_subject} ના '{chapter_label}' આધારિત ગુજરાતીમાં ૫ MCQ (બહુવિકલ્પી) પ્રશ્નો બનાવો. દરેક પ્રશ્નમાં ૪ વિકલ્પો (A, B, C, D) હોય. નીચેના ફોર્મેટમાં જ લખો:\n\nપ્રશ્ન 1: પ્રશ્ન લખો?\nA. વિકલ્પ 1\nB. વિકલ્પ 2\nC. વિકલ્પ 3\nD. વિકલ્પ 4\nસાચો જવાબ: B\nસમજૂતી: સરળ સમજૂતી.\n\nઆ પ્રકારે તમામ ૫ પ્રશ્નો લખો.",
+        "easy_example": f"{target_grade} ના {target_subject} ના '{chapter_label}' નું સરળ ભાષામાં વાસ્તવિક જીવનના ઉદાહરણો દ્વારા સમજૂતી આપો. ગુજરાતીમાં લખો. ગણિત અથવા વિજ્ઞાન હોય તો સૂત્રો $...$ (LaTeX) નો ઉપયોગ કરો.",
     }
     action_prompt = prompt_map.get(quick_action, "")
     if action_prompt:
@@ -641,7 +688,7 @@ if st.session_state.show_voice_recorder:
     with st.container(border=True):
         col_v1, col_v2 = st.columns([5, 1])
         with col_v1:
-            st.markdown("🎙️ **માઈક બટન દબાવીને ગુજરાતીમાં તમારો પ્રશ્ન બોલો:**")
+            st.markdown("🎙️ **ગુજરાતીમાં બોલો અને પૂરું થાય એટલે લાલ સ્ટોપ (⏹) બટન દબાવો:**")
         with col_v2:
             if st.button("✖", key="close_voice_btn"):
                 st.session_state.show_voice_recorder = False
@@ -652,8 +699,12 @@ if st.session_state.show_voice_recorder:
             audio_bytes = audio_val.getvalue()
             st.session_state.audio_counter += 1
             st.session_state.show_voice_recorder = False
-            st.session_state.pending_audio_bytes = audio_bytes
-            st.session_state.messages.append({"role": "user", "content": "🎤 [વૉઇસ પ્રશ્ન મોકલ્યો છે]"})
+            with st.spinner("🎧 તમારો અવાજ ગુજરાતીમાં લખાઈ રહ્યો છે..."):
+                spoken_text = transcribe_audio_gujarati(audio_bytes, api_keys)
+            if spoken_text:
+                st.session_state.messages.append({"role": "user", "content": f"🎤 {spoken_text}"})
+            else:
+                st.warning("⚠️ અવાજ સ્પષ્ટ સંભળાયો નથી, કૃપા કરીને ફરીથી બોલો.")
             st.rerun()
 
 attached_file = st.session_state.get("bottom_uploader") or st.session_state.get("bottom_camera")
@@ -691,7 +742,7 @@ with bottom_container:
     with col_input:
         user_text = st.text_input(
             "પ્રશ્ન...",
-            placeholder="પ્રશ્ન પૂછો...",
+            placeholder="પ્રશ્ન પૂછો (દા.ત. ધોરણ 8 સંસ્કૃત પાઠ 2, અથવા કોઈપણ સવાલ)...",
             label_visibility="collapsed",
             key=f"chat_text_input_{st.session_state.input_counter}"
         )
@@ -710,21 +761,36 @@ if send_clicked and (user_text.strip() or attached_file):
 
 if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
     last_user_msg = st.session_state.messages[-1]["content"]
+    clean_user_msg = last_user_msg.lstrip("🎤 ").strip()
     with st.chat_message("assistant"):
         if not HAS_GENAI or not api_keys:
             st.error("⚠️ કૃપા કરીને Secrets માં તમારી Gemini API Key દાખલ કરો!")
         else:
             try:
-                system_instruction = f"""તમે GCERT {grade_choice} (ગુજરાતી માધ્યમ) ના નિષ્ણાત AI શિક્ષક છો.
-વિષય: {selected_subject_name if selected_subject_name else 'સામાન્ય'} | પ્રકરણ: {selected_chapter_obj['name'] if selected_chapter_obj else 'કોઈપણ'}.
-સરળ, સ્પષ્ટ અને સચોટ ગુજરાતીમાં સીધો જવાબ આપો. ગણિત/વિજ્ઞાનના સૂત્રો $...$ (LaTeX) માં લખો.
+                if is_auto_mode:
+                    mode_instruction = (
+                        "વિદ્યાર્થીએ કોઈ ડ્રોપડાઉન પસંદ કર્યું નથી.\n"
+                        "૧) જો વિદ્યાર્થીના પ્રશ્ન, આગળની વાતચીત કે ફોટો પરથી ધોરણ (3 થી 8) અને વિષય સમજાઈ જાય, તો તરત જ સરળ ગુજરાતીમાં સંપૂર્ણ અને સચોટ જવાબ આપો.\n"
+                        "૨) જો વિદ્યાર્થી ફક્ત અધૂરો પ્રશ્ન પૂછે (જેમ કે 'પાઠ 2 સમજાવો' જેમાં ધોરણ અને વિષય સ્પષ્ટ ન હોય), તો નમ્રતાથી એક નાનો ફોલો-અપ પ્રશ્ન પૂછો: 'તમે કયા ધોરણ (3 થી 8) અને કયા વિષયના પાઠ વિશે જાણવા માંગો છો?'\n"
+                        "૩) મહત્વપૂર્ણ: તમારી પાસે ધોરણ 3 થી 8 ના બધા જ વિષયો (ગુજરાતી, હિન્દી, ગણિત, પર્યાવરણ/વિજ્ઞાન, સામાજિક વિજ્ઞાન, અંગ્રેજી, સંસ્કૃત) નું સંપૂર્ણ જ્ઞાન છે. ક્યારેય એમ ન કહેવું કે 'મારી પાસે ડેટા નથી'. નીચે આપેલી GCERT ની સત્તાવાર અનુક્રમણિકા મુજબ જ જવાબ આપો (જૂના પુસ્તકો જેમ કે 'Marigold' કે 'ગણિતગમ્મત' સાથે ગૂંચવાશો નહીં):\n"
+                        f"{ALL_GRADES_REF}\n"
+                    )
+                else:
+                    all_ch_list = "\n".join([f"- {c['name']}" for c in chapters]) if chapters else ""
+                    mode_instruction = (
+                        f"હાલ પસંદ કરેલ ધોરણ: {grade_choice} | વિષય: {selected_subject_name} | "
+                        f"પ્રકરણ: {selected_chapter_obj['name'] if selected_chapter_obj else 'બધા પ્રકરણો'}.\n"
+                        f"આ વિષયના GCERT નવા પ્રકરણોની સત્તાવાર યાદી:\n{all_ch_list}\n"
+                        "મહત્વપૂર્ણ સૂચના: જૂના પુસ્તકો (જેમ કે અંગ્રેજીમાં 'Marigold' કે ગણિતમાં 'ગણિતગમ્મત') સાથે ક્યારેય ગૂંચવાશો નહીં. "
+                        "ઉપર આપેલા પ્રકરણો/યુનિટ્સ જ આ વિષયના સાચા અને નવા પ્રકરણો છે, તેના આધારે જ જવાબ આપો."
+                    )
+
+                system_instruction = f"""તમે ગુજરાત રાજ્ય શાળા પાઠ્યપુસ્તક મંડળ (GCERT) ધોરણ 3 થી 8 (ગુજરાતી માધ્યમ) ના નિષ્ણાત AI શિક્ષક છો.
+{mode_instruction}
+સરળ, સ્પષ્ટ અને સચોટ ગુજરાતીમાં જવાબ આપો. ગણિત/વિજ્ઞાનના સૂત્રો $...$ (LaTeX) માં લખો.
 MCQ માટે 'સાચો જવાબ: X' અને સમજૂતી આપો."""
 
                 contents = []
-
-                pending_audio = st.session_state.pop("pending_audio_bytes", None)
-                if pending_audio:
-                    contents.append(types.Part.from_bytes(data=pending_audio, mime_type="audio/wav"))
 
                 current_attachment = st.session_state.get("bottom_uploader") or st.session_state.get("bottom_camera")
                 if current_attachment is not None:
@@ -748,13 +814,12 @@ MCQ માટે 'સાચો જવાબ: X' અને સમજૂતી આ
                 st.session_state.pop("bottom_uploader", None)
                 st.session_state.pop("bottom_camera", None)
 
-                # Keep only last 4 messages for ultra-fast response
-                recent_msgs = st.session_state.messages[:-1][-4:]
+                recent_msgs = st.session_state.messages[:-1][-6:]
                 history_text = ""
                 for msg in recent_msgs:
                     history_text += f"{'વિદ્યાર્થી' if msg['role'] == 'user' else 'શિક્ષક'}: {msg['content']}\n"
 
-                full_prompt = f"{system_instruction}\n{history_text}પ્રશ્ન: {last_user_msg}"
+                full_prompt = f"{system_instruction}\n\n{history_text}વિદ્યાર્થીનો પ્રશ્ન: {clean_user_msg}"
                 contents.append(full_prompt)
 
                 all_models = ["gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-3.5-flash-lite"]
