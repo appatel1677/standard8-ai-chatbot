@@ -46,9 +46,6 @@ def parse_mcq(text):
     return questions
 
 
-# ---------------------------------------------------------------------------
-# PDF font loader (Gujarati / Devanagari support via fpdf2 + uharfbuzz)
-# ---------------------------------------------------------------------------
 @st.cache_resource
 def get_pdf_font_path():
     """Return a TTF path supporting Gujarati & Devanagari, downloading if needed."""
@@ -89,12 +86,6 @@ def build_pdf_bytes(messages, subject_name, chapter_name):
     else:
         base_font = "helvetica"
 
-    def footer():
-        pdf.set_y(-12)
-        pdf.set_font(base_font, "", 8)
-        pdf.set_text_color(120, 120, 120)
-        pdf.cell(0, 6, f"Page {pdf.page_no()}", align="C")
-
     pdf.add_page()
     pdf.set_font(base_font, "B", 16)
     pdf.set_text_color(30, 58, 138)
@@ -118,8 +109,7 @@ def build_pdf_bytes(messages, subject_name, chapter_name):
         pdf.multi_cell(0, 6, msg["content"])
         pdf.ln(2)
 
-    pdf_bytes = bytes(pdf.output(dest="S"))
-    return pdf_bytes
+    return bytes(pdf.output(dest="S"))
 
 
 st.set_page_config(
@@ -130,6 +120,8 @@ st.set_page_config(
 )
 
 
+# Cache syllabus in memory so app runs super fast on every click
+@st.cache_data
 def load_syllabus():
     syllabus_path = "diksha_syllabus.json"
     if os.path.exists(syllabus_path):
@@ -159,49 +151,42 @@ html, body, p, h1, h2, h3, h4, h5, h6, input, textarea, button,
 .app-banner {
     background: linear-gradient(135deg, #1E3A8A, #3B82F6);
     color: #ffffff;
-    padding: 1.5rem 1rem;
+    padding: 1.25rem 1rem;
     border-radius: 16px;
-    margin: 0.5rem 0 1.25rem 0;
+    margin: 0.25rem 0 1rem 0;
     box-shadow: 0 8px 24px rgba(30, 58, 138, 0.25);
 }
 .app-banner h1 {
     margin: 0 0 0.25rem 0;
-    font-size: 1.75rem;
+    font-size: 1.65rem;
     font-weight: 700;
-    letter-spacing: 0.2px;
-    font-family: 'Noto Sans Gujarati', 'Noto Sans', sans-serif !important;
 }
 .app-banner p {
     margin: 0;
-    font-size: 1rem;
+    font-size: 0.95rem;
     opacity: 0.95;
-    font-family: 'Noto Sans Gujarati', 'Noto Sans', sans-serif !important;
 }
 
 .subject-pill {
     display: inline-flex;
     align-items: center;
-    gap: 0.5rem;
+    flex-wrap: wrap;
+    gap: 0.4rem;
     background: linear-gradient(135deg, #F59E0B, #D97706);
     color: #fff;
-    padding: 0.5rem 1rem;
+    padding: 0.45rem 0.9rem;
     border-radius: 999px;
-    font-size: 0.95rem;
+    font-size: 0.9rem;
     font-weight: 600;
-    margin-bottom: 1rem;
+    margin-bottom: 0.85rem;
     box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
-    font-family: 'Noto Sans Gujarati', 'Noto Sans', sans-serif !important;
 }
-.subject-pill .label { font-weight: 500; opacity: 0.9; }
 
 .stChatMessage {
-    border-radius: 16px !important;
+    border-radius: 18px !important;
     padding: 0.85rem 1rem !important;
-    margin: 0.6rem 0 !important;
+    margin: 0.5rem 0 !important;
     box-shadow: 0 2px 8px rgba(0,0,0,0.06) !important;
-}
-.stChatMessage [data-testid="stChatMessageContent"] {
-    border-radius: 16px !important;
 }
 .stChatMessage[data-testid="stChatMessage"][data-message-role="user"] {
     background: #EFF6FF !important;
@@ -214,65 +199,180 @@ html, body, p, h1, h2, h3, h4, h5, h6, input, textarea, button,
     margin-right: 2rem !important;
 }
 
-.mjx-chtml, .mjx-math, .MathJax {
-    font-family: 'Noto Sans Gujarati', 'Noto Sans', sans-serif !important;
-}
-
+/* CHATGPT-STYLE SINGLE ROW BOTTOM PILL BAR (DESKTOP + MOBILE) */
 [data-testid="stBottom"] {
-    background-color: #ffffff !important;
-    border-top: 1px solid #e2e8f0 !important;
-    padding: 0.75rem 1rem !important;
-    box-shadow: 0 -4px 6px -1px rgba(0, 0, 0, 0.05) !important;
+    padding: 0.5rem 0.75rem !important;
+    background: transparent !important;
+    border-top: none !important;
+    box-shadow: none !important;
     z-index: 99999 !important;
 }
-[data-testid="stBottom"] [data-testid="stPopover"] > button {
-    border-radius: 50% !important;
-    width: 42px !important;
-    height: 42px !important;
+
+[data-testid="stBottom"] [data-testid="stHorizontalBlock"],
+div[data-testid="stHorizontalBlock"]:has([data-testid="stPopover"]) {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 6px !important;
+    background-color: #2f2f2f !important;
+    border: 1px solid #4a4a4a !important;
+    border-radius: 999px !important;
+    padding: 5px 8px !important;
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.28) !important;
+    max-width: 820px !important;
+    width: 100% !important;
+    margin: 0 auto !important;
+}
+
+[data-testid="stBottom"] [data-testid="stColumn"],
+div[data-testid="stHorizontalBlock"]:has([data-testid="stPopover"]) > [data-testid="stColumn"] {
+    width: auto !important;
+    min-width: unset !important;
+    max-width: unset !important;
+    flex: 0 0 auto !important;
     padding: 0 !important;
+    margin: 0 !important;
+}
+
+[data-testid="stBottom"] [data-testid="stColumn"]:nth-child(2),
+div[data-testid="stHorizontalBlock"]:has([data-testid="stPopover"]) > [data-testid="stColumn"]:nth-child(2) {
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+}
+
+[data-testid="stBottom"] [data-testid="stPopover"] > button,
+div[data-testid="stHorizontalBlock"]:has([data-testid="stPopover"]) [data-testid="stPopover"] > button {
+    border-radius: 50% !important;
+    width: 36px !important;
+    height: 36px !important;
+    min-height: 36px !important;
+    padding: 0 !important;
+    background-color: transparent !important;
+    color: #ffffff !important;
+    border: none !important;
+    font-size: 20px !important;
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.05) !important;
-    background-color: #ffffff !important;
-    border: 1px solid #cbd5e1 !important;
+}
+[data-testid="stBottom"] [data-testid="stPopover"] > button:hover {
+    background-color: #424242 !important;
+}
+[data-testid="stBottom"] [data-testid="stPopover"] > button svg {
+    display: none !important;
+}
+
+[data-testid="stBottom"] [data-testid="stTextInput"],
+div[data-testid="stHorizontalBlock"]:has([data-testid="stPopover"]) [data-testid="stTextInput"] {
+    margin: 0 !important;
+    width: 100% !important;
+}
+[data-testid="stBottom"] [data-testid="stTextInput"] div[data-baseweb="input"],
+div[data-testid="stHorizontalBlock"]:has([data-testid="stPopover"]) div[data-baseweb="input"] {
+    background-color: #2f2f2f !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+[data-testid="stBottom"] [data-testid="stTextInput"] input,
+div[data-testid="stHorizontalBlock"]:has([data-testid="stPopover"]) input[type="text"] {
+    background-color: #2f2f2f !important;
+    color: #ffffff !important;
+    -webkit-text-fill-color: #ffffff !important;
+    caret-color: #ffffff !important;
+    border: none !important;
+    padding: 6px 8px !important;
+    font-size: 0.95rem !important;
+    box-shadow: none !important;
+}
+[data-testid="stBottom"] [data-testid="stTextInput"] input::placeholder,
+div[data-testid="stHorizontalBlock"]:has([data-testid="stPopover"]) input[type="text"]::placeholder {
+    color: #a3a3a3 !important;
+    -webkit-text-fill-color: #a3a3a3 !important;
+}
+[data-testid="stBottom"] [data-testid="InputInstructions"],
+div[data-testid="stHorizontalBlock"]:has([data-testid="stPopover"]) [data-testid="InputInstructions"] {
+    display: none !important;
+}
+
+[data-testid="stBottom"] button[kind="secondary"],
+div[data-testid="stHorizontalBlock"]:has([data-testid="stPopover"]) button[kind="secondary"] {
+    border-radius: 50% !important;
+    width: 36px !important;
+    height: 36px !important;
+    min-height: 36px !important;
+    padding: 0 !important;
+    background-color: transparent !important;
+    color: #ffffff !important;
+    border: none !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    font-size: 18px !important;
+}
+[data-testid="stBottom"] button[kind="secondary"]:hover {
+    background-color: #424242 !important;
+}
+
+[data-testid="stBottom"] button[kind="primary"],
+div[data-testid="stHorizontalBlock"]:has([data-testid="stPopover"]) button[kind="primary"] {
+    border-radius: 50% !important;
+    width: 36px !important;
+    height: 36px !important;
+    min-height: 36px !important;
+    padding: 0 !important;
+    background-color: #2563EB !important;
+    color: #ffffff !important;
+    border: none !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    font-size: 16px !important;
+}
+[data-testid="stBottom"] button[kind="primary"]:hover {
+    background-color: #1D4ED8 !important;
 }
 
 @media (max-width: 768px) {
     .block-container {
         padding-top: 0.5rem !important;
-        padding-left: 0.5rem !important;
-        padding-right: 0.5rem !important;
+        padding-left: 0.6rem !important;
+        padding-right: 0.6rem !important;
+        padding-bottom: 5.5rem !important;
         max-width: 100% !important;
     }
     .app-banner {
-        padding: 0.9rem 0.75rem;
-        margin-bottom: 0.5rem;
-        border-radius: 12px;
+        padding: 0.85rem 0.75rem;
+        margin-bottom: 0.6rem;
+        border-radius: 14px;
     }
-    .app-banner h1 { font-size: 1.25rem; }
-    .app-banner p { font-size: 0.85rem; }
-    .subject-pill { font-size: 0.8rem; padding: 0.4rem 0.75rem; }
+    .app-banner h1 { font-size: 1.2rem; }
+    .app-banner p { font-size: 0.82rem; }
+    .subject-pill { font-size: 0.78rem; padding: 0.35rem 0.75rem; }
     .stChatMessage {
-        margin: 0.3rem 0 !important;
-        padding: 0.6rem 0.8rem !important;
-        border-radius: 12px !important;
+        margin: 0.35rem 0 !important;
+        padding: 0.65rem 0.85rem !important;
+        border-radius: 14px !important;
     }
     .stChatMessage[data-testid="stChatMessage"][data-message-role="user"] {
-        margin-left: 0.5rem !important;
+        margin-left: 1rem !important;
     }
     .stChatMessage[data-testid="stChatMessage"][data-message-role="assistant"] {
         margin-right: 0.5rem !important;
     }
     [data-testid="stBottom"] {
-        padding: 0.5rem 0.5rem !important;
+        padding: 0.4rem 0.45rem !important;
     }
-    [data-testid="stSidebar"] {
-        width: 0 !important;
+    [data-testid="stBottom"] [data-testid="stHorizontalBlock"],
+    div[data-testid="stHorizontalBlock"]:has([data-testid="stPopover"]) {
+        padding: 4px 6px !important;
+        gap: 3px !important;
     }
-    .stChatMessage .stMarkdown {
-        font-size: 0.95rem !important;
-        line-height: 1.6 !important;
+    [data-testid="stBottom"] [data-testid="stTextInput"] input,
+    div[data-testid="stHorizontalBlock"]:has([data-testid="stPopover"]) input[type="text"] {
+        font-size: 0.9rem !important;
+        padding: 4px 4px !important;
     }
 }
 </style>
@@ -307,7 +407,7 @@ with st.sidebar:
     st.divider()
     model_choice = st.selectbox(
         "🤖 AI મોડેલ પસંદ કરો:",
-        ["gemini-2.5-flash", "gemini-3.5-flash-lite", "gemini-3.5-flash"],
+        ["gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-3.5-flash-lite"],
         index=0,
         key="model_choice_select"
     )
@@ -340,7 +440,6 @@ with st.sidebar:
         chapters = subject_info.get("chapters", [])
         chapter_names = [ch["name"] for ch in chapters]
 
-        # Clean format: "પ્રકરણ X: <Chapter Name>"
         chapter_display = []
         for idx, ch in enumerate(chapters, 1):
             name = ch.get("name", "").strip()
@@ -392,6 +491,7 @@ with st.sidebar:
         st.session_state.pop("mcq_questions", None)
         st.session_state.pop("mcq_user_answers", None)
         st.session_state.pop("mcq_checked", None)
+        st.session_state.show_voice_recorder = False
         st.rerun()
 
     col_u1, col_u2 = st.columns([1, 2])
@@ -456,30 +556,24 @@ st.markdown('''
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
-
 if "mcq_questions" not in st.session_state:
     st.session_state.mcq_questions = None
 if "mcq_user_answers" not in st.session_state:
     st.session_state.mcq_user_answers = {}
 if "mcq_checked" not in st.session_state:
     st.session_state.mcq_checked = False
+if "show_voice_recorder" not in st.session_state:
+    st.session_state.show_voice_recorder = False
+if "audio_counter" not in st.session_state:
+    st.session_state.audio_counter = 0
 
 if selected_subject_name:
     ch_text = selected_chapter_obj['name'] if selected_chapter_obj else 'કોઈપણ'
     st.markdown(f'''
     <div class="subject-pill">
-        <span class="label">🎓 {grade_choice} | 📌 {selected_subject_name}</span>
-        <span>|</span>
-        <span>{ch_text}</span>
+        <span>🎓 {grade_choice} | 📌 {selected_subject_name} | {ch_text}</span>
     </div>
     ''', unsafe_allow_html=True)
-
-client = None
-if HAS_GENAI and api_keys:
-    try:
-        client = genai.Client(api_key=api_keys[0])
-    except Exception as e:
-        st.error(f"❌ Gemini Client Error: {e}")
 
 chapter_label = selected_chapter_obj['name'] if selected_chapter_obj else 'આખા અભ્યાસક્રમ'
 
@@ -489,9 +583,6 @@ if quick_action and selected_subject_name:
         "exercise": f"{grade_choice} ના વિષય '{selected_subject_name}' ના પ્રકરણ '{chapter_label}' ના સ્વાધ્યાયના પ્રશ્નો અને તેના સાચા જવાબો સમજૂતી સાથે આપો.",
         "mcq": f"{grade_choice} ના વિષય '{selected_subject_name}' ના પ્રકરણ '{chapter_label}' આધારિત ગુજરાતીમાં ૫ MCQ (બહુવિકલ્પી) પ્રશ્નો બનાવો. દરેક પ્રશ્નમાં ૪ વિકલ્પો (A, B, C, D) હોય. નીચેના ફોર્મેટમાં જ લખો:\n\nપ્રશ્ન 1: પ્રશ્ન લખો?\nA. વિકલ્પ 1\nB. વિકલ્પ 2\nC. વિકલ્પ 3\nD. વિકલ્પ 4\nસાચો જવાબ: B\nસમજૂતી: સરળ સમજૂતી.\n\nઆ પ્રકારે તમામ ૫ પ્રશ્નો લખો.",
         "easy_example": f"{grade_choice} ના વિષય '{selected_subject_name}' ના પ્રકરણ '{chapter_label}' નું સરળ ભાષામાં વાસ્તવિક જીવનના ઉદાહરણો દ્વારા સમજૂતી આપો જેથી {grade_choice} નું વિદ્યાર્થી સરળતાથી સમજી શકે. ગુજરાતીમાં લખો. ગણિત અથવા વિજ્ઞાન હોય તો સૂત્રો $...$ (LaTeX) નો ઉપયોગ કરો.",
-        "imp": f"{grade_choice} ના વિષય '{selected_subject_name}' ના પ્રકરણ '{chapter_label}' માંથી વાર્ષિક પરીક્ષા માટે અતિ મહત્વના (IMP) પ્રશ્નો અને ઉત્તરો જણાવો.",
-        "formulas": f"{grade_choice} ના વિષય '{selected_subject_name}' ના પ્રકરણ '{chapter_label}' ના તમામ મહત્વના સૂત્રો, નિયમો અથવા વ્યાકરણના મુદ્દાઓની યાદી બનાવીને સમજાવો.",
-        "nmms": f"{grade_choice} ના વિષય '{selected_subject_name}' માટે NMMS સ્કોલરશીપ પરીક્ષામાં પૂછાઈ શકે તેવા મહત્વના પ્રશ્નો અને શોર્ટકટ ટ્રીક્સ ગુજરાતીમાં સમજાવો."
     }
     action_prompt = prompt_map.get(quick_action, "")
     if action_prompt:
@@ -546,6 +637,25 @@ if st.session_state.get("mcq_questions"):
                 if q.get("explanation"):
                     st.markdown(f"💡 સમજૂતી: {q['explanation']}")
 
+if st.session_state.show_voice_recorder:
+    with st.container(border=True):
+        col_v1, col_v2 = st.columns([5, 1])
+        with col_v1:
+            st.markdown("🎙️ **માઈક બટન દબાવીને ગુજરાતીમાં તમારો પ્રશ્ન બોલો:**")
+        with col_v2:
+            if st.button("✖", key="close_voice_btn"):
+                st.session_state.show_voice_recorder = False
+                st.rerun()
+
+        audio_val = st.audio_input("અવાજ રેકોર્ડ કરો", key=f"voice_rec_{st.session_state.audio_counter}", label_visibility="collapsed")
+        if audio_val is not None:
+            audio_bytes = audio_val.getvalue()
+            st.session_state.audio_counter += 1
+            st.session_state.show_voice_recorder = False
+            st.session_state.pending_audio_bytes = audio_bytes
+            st.session_state.messages.append({"role": "user", "content": "🎤 [વૉઇસ પ્રશ્ન મોકલ્યો છે]"})
+            st.rerun()
+
 attached_file = st.session_state.get("bottom_uploader") or st.session_state.get("bottom_camera")
 
 if attached_file:
@@ -563,7 +673,7 @@ if attached_file:
             file_name = getattr(attached_file, "name", "કેમેરા ફોટો")
             st.caption(f"📎 ફાઈલ જોડાયેલ છે: {file_name}")
         with col_clear:
-            if st.button("❌ હટાવો", key="clear_attachment_btn"):
+            if st.button("❌", key="clear_attachment_btn"):
                 st.session_state.pop("bottom_uploader", None)
                 st.session_state.pop("bottom_camera", None)
                 st.rerun()
@@ -573,37 +683,7 @@ if "input_counter" not in st.session_state:
 
 bottom_container = getattr(st, "bottom", st.container())
 with bottom_container:
-    col_mic, col_plus, col_input, col_send = st.columns([1, 1, 10, 1.5], vertical_alignment="center")
-    with col_mic:
-        mic_html = '''
-        <button id="micBtn" onclick="startMic()" style="border-radius:50%;width:42px;height:42px;border:1px solid #cbd5e1;background:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:18px;box-shadow:0 2px 4px rgba(0,0,0,0.05);">🎤</button>
-        <script>
-        function startMic() {
-            if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-                alert('બ્રાઉઝર વૉઇસ ઇનપુટ સપોર્ટ કરતું નથી');
-                return;
-            }
-            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-            const recognition = new SpeechRecognition();
-            recognition.lang = 'gu-IN';
-            recognition.interimResults = false;
-            recognition.maxAlternatives = 1;
-            recognition.onresult = function(event) {
-                const transcript = event.results[0][0].transcript;
-                const inputs = document.querySelectorAll('input[type="text"]');
-                if (inputs.length > 0) {
-                    inputs[inputs.length-1].value = transcript;
-                    inputs[inputs.length-1].dispatchEvent(new Event('input', { bubbles: true }));
-                }
-            };
-            recognition.onerror = function(event) { console.log('Speech error:', event.error); };
-            recognition.start();
-            document.getElementById('micBtn').style.background = '#FEE2E2';
-            recognition.onend = function() { document.getElementById('micBtn').style.background = '#fff'; };
-        }
-        </script>
-        '''
-        st.components.v1.html(mic_html, height=60)
+    col_plus, col_input, col_mic, col_send = st.columns([1, 10, 1, 1], vertical_alignment="center")
     with col_plus:
         with st.popover("➕"):
             st.file_uploader("📁 ગેલેરી / PDF / ફાઈલ પસંદ કરો", type=None, key="bottom_uploader")
@@ -611,12 +691,16 @@ with bottom_container:
     with col_input:
         user_text = st.text_input(
             "પ્રશ્ન...",
-            placeholder="અહીં તમારો પ્રશ્ન પૂછો (દા.ત., 'પ્રકરણ ૧ નો સ્વાધ્યાય સમજાવો')...",
+            placeholder="પ્રશ્ન પૂછો...",
             label_visibility="collapsed",
             key=f"chat_text_input_{st.session_state.input_counter}"
         )
+    with col_mic:
+        if st.button("🎤", key=f"mic_toggle_{st.session_state.input_counter}", help="બોલીને પ્રશ્ન પૂછો"):
+            st.session_state.show_voice_recorder = not st.session_state.show_voice_recorder
+            st.rerun()
     with col_send:
-        send_clicked = st.button("➤", use_container_width=True, type="primary", key=f"send_btn_{st.session_state.input_counter}")
+        send_clicked = st.button("➤", type="primary", key=f"send_btn_{st.session_state.input_counter}")
 
 if send_clicked and (user_text.strip() or attached_file):
     prompt_text = user_text.strip() if user_text.strip() else ("[ફાઈલ સંલગ્ન છે]" if attached_file else "")
@@ -627,109 +711,107 @@ if send_clicked and (user_text.strip() or attached_file):
 if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
     last_user_msg = st.session_state.messages[-1]["content"]
     with st.chat_message("assistant"):
-        with st.spinner("🤖 AI શિક્ષક જવાબ તૈયાર કરી રહ્યા છે..."):
-            if not client:
-                st.error("⚠️ કૃપા કરીને સાઈડબારમાં તમારી Gemini API Key દાખલ કરો!")
-            else:
-                try:
-                    system_instruction = f"""
-તમે ગુજરાત રાજ્ય શાળા પાઠ્યપુસ્તક મંડળ (GCERT) અભ્યાસક્રમ આધારિત {grade_choice} (ગુજરાતી માધ્યમ) ના નિષ્ણાત અને મૈત્રીપૂર્ણ AI શિક્ષક છો.
-વિદ્યાર્થીઓને હંમેશા સરળ, સ્પષ્ટ અને સચોટ ગુજરાતી ભાષામાં સ્ટેપ-બાય-સ્ટેપ સમજૂતી આપો.
-વર્તમાન પસંદ કરેલ ધોરણ: {grade_choice}
-વર્તમાન પસંદ કરેલ વિષય: {selected_subject_name if selected_subject_name else 'સામાન્ય'}
-પ્રકરણ: {selected_chapter_obj['name'] if selected_chapter_obj else 'કોઈપણ'}
-MCQ જવાબ પાદતરમાં હોય તો 'સાચો જવાબ: X' ફોર્મેટ અને સમજૂતી આપો. ગણિત/વિજ્ઞાનના સૂત્રો $...$ (LaTeX) નો ઉપયોગ કરો.
-"""
-                    contents = []
-                    current_attachment = st.session_state.get("bottom_uploader") or st.session_state.get("bottom_camera")
-                    if current_attachment is not None:
-                        try:
-                            file_bytes = current_attachment.getvalue() if hasattr(current_attachment, "getvalue") else current_attachment.read()
-                            if hasattr(current_attachment, "seek"):
-                                current_attachment.seek(0)
+        if not HAS_GENAI or not api_keys:
+            st.error("⚠️ કૃપા કરીને Secrets માં તમારી Gemini API Key દાખલ કરો!")
+        else:
+            try:
+                system_instruction = f"""તમે GCERT {grade_choice} (ગુજરાતી માધ્યમ) ના નિષ્ણાત AI શિક્ષક છો.
+વિષય: {selected_subject_name if selected_subject_name else 'સામાન્ય'} | પ્રકરણ: {selected_chapter_obj['name'] if selected_chapter_obj else 'કોઈપણ'}.
+સરળ, સ્પષ્ટ અને સચોટ ગુજરાતીમાં સીધો જવાબ આપો. ગણિત/વિજ્ઞાનના સૂત્રો $...$ (LaTeX) માં લખો.
+MCQ માટે 'સાચો જવાબ: X' અને સમજૂતી આપો."""
 
-                            ftype = getattr(current_attachment, "type", "")
-                            if ftype and ftype.startswith("image/"):
-                                contents.append(Image.open(io.BytesIO(file_bytes)))
-                            elif ftype == "application/pdf":
-                                contents.append(
-                                    types.Part.from_bytes(
-                                        data=file_bytes,
-                                        mime_type="application/pdf"
-                                    )
-                                )
-                            else:
-                                try:
-                                    contents.append(Image.open(io.BytesIO(file_bytes)))
-                                except Exception:
-                                    contents.append("[અપલોડ કરેલી ફાઈલ સંલગ્ન છે]")
-                        except Exception as file_err:
-                            contents.append(f"[ફાઈલ જોડવામાં ભૂલ: {file_err}]")
+                contents = []
 
-                    st.session_state.pop("bottom_uploader", None)
-                    st.session_state.pop("bottom_camera", None)
+                pending_audio = st.session_state.pop("pending_audio_bytes", None)
+                if pending_audio:
+                    contents.append(types.Part.from_bytes(data=pending_audio, mime_type="audio/wav"))
 
-                    history_text = ""
-                    for msg in st.session_state.messages[:-1]:
-                        history_text += f"{'વિદ્યાર્થી' if msg['role'] == 'user' else 'શિક્ષક'}: {msg['content']}\n"
-
-                    full_prompt = f"{system_instruction}\n\nઇતિહાસ:\n{history_text}\nપ્રશ્ન: {last_user_msg}"
-                    contents.append(full_prompt)
-
-                    all_models = ["gemini-2.5-flash", "gemini-3.5-flash-lite", "gemini-3.5-flash"]
-                    available_models = [model_choice] + [m for m in all_models if m != model_choice]
-
-                    answer_text = ""
-                    success = False
-                    last_error = None
-                    placeholder = st.empty()
-
-                    for cur_key in api_keys:
-                        key_client = genai.Client(api_key=cur_key)
-                        for cur_model in available_models:
+                current_attachment = st.session_state.get("bottom_uploader") or st.session_state.get("bottom_camera")
+                if current_attachment is not None:
+                    try:
+                        file_bytes = current_attachment.getvalue() if hasattr(current_attachment, "getvalue") else current_attachment.read()
+                        if hasattr(current_attachment, "seek"):
+                            current_attachment.seek(0)
+                        ftype = getattr(current_attachment, "type", "")
+                        if ftype and ftype.startswith("image/"):
+                            contents.append(Image.open(io.BytesIO(file_bytes)))
+                        elif ftype == "application/pdf":
+                            contents.append(types.Part.from_bytes(data=file_bytes, mime_type="application/pdf"))
+                        else:
                             try:
-                                stream_obj = key_client.models.generate_content_stream(
-                                    model=cur_model,
-                                    contents=contents
-                                )
-                                temp_text = ""
-                                for chunk in stream_obj:
-                                    if chunk.text:
-                                        temp_text += chunk.text
-                                        placeholder.markdown(temp_text + "▌")
-                                placeholder.markdown(temp_text)
-                                answer_text = temp_text
-                                success = True
-                                break
-                            except Exception as err:
-                                last_error = err
-                                err_str = str(err)
-                                placeholder.empty()
-                                if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
-                                    break
-                                elif "503" in err_str or "UNAVAILABLE" in err_str or "500" in err_str or "404" in err_str:
-                                    continue
-                                else:
-                                    raise err
-                        if success:
+                                contents.append(Image.open(io.BytesIO(file_bytes)))
+                            except Exception:
+                                contents.append("[અપલોડ કરેલી ફાઈલ સંલગ્ન છે]")
+                    except Exception as file_err:
+                        contents.append(f"[ફાઈલ જોડવામાં ભૂલ: {file_err}]")
+
+                st.session_state.pop("bottom_uploader", None)
+                st.session_state.pop("bottom_camera", None)
+
+                # Keep only last 4 messages for ultra-fast response
+                recent_msgs = st.session_state.messages[:-1][-4:]
+                history_text = ""
+                for msg in recent_msgs:
+                    history_text += f"{'વિદ્યાર્થી' if msg['role'] == 'user' else 'શિક્ષક'}: {msg['content']}\n"
+
+                full_prompt = f"{system_instruction}\n{history_text}પ્રશ્ન: {last_user_msg}"
+                contents.append(full_prompt)
+
+                all_models = ["gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-3.5-flash-lite"]
+                available_models = [model_choice] + [m for m in all_models if m != model_choice]
+
+                answer_text = ""
+                success = False
+                last_error = None
+                placeholder = st.empty()
+                placeholder.markdown("⚡ *જવાબ લખાઈ રહ્યો છે...*")
+
+                for cur_key in api_keys:
+                    key_client = genai.Client(api_key=cur_key)
+                    for cur_model in available_models:
+                        try:
+                            stream_obj = key_client.models.generate_content_stream(
+                                model=cur_model,
+                                contents=contents
+                            )
+                            temp_text = ""
+                            for chunk in stream_obj:
+                                if chunk.text:
+                                    temp_text += chunk.text
+                                    placeholder.markdown(temp_text + "▌")
+                            placeholder.markdown(temp_text)
+                            answer_text = temp_text
+                            success = True
                             break
+                        except Exception as err:
+                            last_error = err
+                            err_str = str(err)
+                            if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
+                                break
+                            elif "503" in err_str or "UNAVAILABLE" in err_str or "500" in err_str or "404" in err_str:
+                                continue
+                            else:
+                                raise err
+                    if success:
+                        break
 
-                    if not success:
-                        err_msg = f"❌ સર્વર પર અત્યારે વધુ ટ્રાફિક છે. કૃપા કરીને થોડી સેકન્ડ પછી ફરી પ્રયત્ન કરો. ({last_error})"
-                        st.error(err_msg)
-                        st.session_state.messages.append({"role": "assistant", "content": err_msg})
-                        st.stop()
-
-                    st.session_state.messages.append({"role": "assistant", "content": answer_text})
-
-                    if quick_action == "mcq" and st.session_state.mcq_questions is None:
-                        parsed = parse_mcq(answer_text)
-                        if parsed:
-                            st.session_state.mcq_questions = parsed
-                            st.session_state.mcq_user_answers = {}
-                            st.session_state.mcq_checked = False
-                        st.rerun()
-                except Exception as e:
-                    err_msg = f"❌ AI જવાબ મેળવવામાં ભૂલ આવી: {e}"
+                if not success:
+                    placeholder.empty()
+                    err_msg = f"❌ સર્વર પર અત્યારે વધુ ટ્રાફિક છે. કૃપા કરીને થોડી સેકન્ડ પછી ફરી પ્રયત્ન કરો. ({last_error})"
                     st.error(err_msg)
                     st.session_state.messages.append({"role": "assistant", "content": err_msg})
+                    st.stop()
+
+                st.session_state.messages.append({"role": "assistant", "content": answer_text})
+
+                if quick_action == "mcq" and st.session_state.mcq_questions is None:
+                    parsed = parse_mcq(answer_text)
+                    if parsed:
+                        st.session_state.mcq_questions = parsed
+                        st.session_state.mcq_user_answers = {}
+                        st.session_state.mcq_checked = False
+                    st.rerun()
+            except Exception as e:
+                err_msg = f"❌ AI જવાબ મેળવવામાં ભૂલ આવી: {e}"
+                st.error(err_msg)
+                st.session_state.messages.append({"role": "assistant", "content": err_msg})
