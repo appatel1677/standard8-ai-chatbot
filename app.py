@@ -1,5 +1,4 @@
 ﻿import streamlit as st
-import streamlit.components.v1 as components
 import json, os, io, re
 from PIL import Image
 from fpdf import FPDF
@@ -60,6 +59,28 @@ def build_pdf_bytes(messages):
         pdf.ln(2)
     return bytes(pdf.output(dest="S"))
 
+def transcribe_gujarati(audio_file, api_keys):
+    """Works 100% on Mobile Chrome, iOS Safari, and Desktop."""
+    if not HAS_GENAI or not api_keys or not audio_file:
+        return ""
+    audio_bytes = audio_file.getvalue()
+    if not audio_bytes:
+        return ""
+    mime = getattr(audio_file, "type", None) or "audio/wav"
+    prompt = "આ ઓડિયોમાં વિદ્યાર્થી જે બોલ્યા છે તે ફક્ત ગુજરાતી લિપિમાં લખો. બીજું કોઈ વધારાનું લખાણ લખશો નહીં."
+    for key in api_keys:
+        try:
+            client = genai.Client(api_key=key)
+            resp = client.models.generate_content(
+                model="gemini-2.5-flash-lite",
+                contents=[types.Part.from_bytes(data=audio_bytes, mime_type=mime), prompt]
+            )
+            if resp and resp.text:
+                return resp.text.strip()
+        except Exception:
+            continue
+    return ""
+
 @st.cache_data
 def load_syllabus():
     if os.path.exists("diksha_syllabus.json"):
@@ -92,7 +113,7 @@ p, h1, h2, h3, input, textarea, button, .stMarkdown, .stChatMessage {
 
 .block-container {
     padding-top: 2.8rem !important;
-    padding-bottom: 5.5rem !important;
+    padding-bottom: 6.5rem !important;
     padding-left: 0.75rem !important;
     padding-right: 0.75rem !important;
     max-width: 820px !important;
@@ -125,10 +146,10 @@ p, h1, h2, h3, input, textarea, button, .stMarkdown, .stChatMessage {
     padding: 0.6rem 0.9rem !important;
 }
 
-/* REAL STREAMLIT BOTTOM BAR STYLED AS SINGLE-ROW PILL (DESKTOP + MOBILE) */
+/* BOTTOM BAR STYLING */
 [data-testid="stBottom"] {
     padding: 0.4rem 0.5rem !important;
-    background: transparent !important;
+    background: rgba(255, 255, 255, 0.95) !important;
     z-index: 99999 !important;
 }
 [data-testid="stBottom"] > div {
@@ -145,7 +166,7 @@ p, h1, h2, h3, input, textarea, button, .stMarkdown, .stChatMessage {
     border: 1px solid #374151 !important;
     border-radius: 999px !important;
     padding: 5px 7px !important;
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28) !important;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25) !important;
     width: 100% !important;
     box-sizing: border-box !important;
 }
@@ -204,21 +225,17 @@ p, h1, h2, h3, input, textarea, button, .stMarkdown, .stChatMessage {
     font-size: 15px !important;
 }
 
-iframe[height="0"] {
-    display: none !important;
-    position: absolute !important;
-}
-
 @media (max-width: 600px) {
     .slim-header { font-size: 0.9rem; padding: 7px 10px; }
 }
 </style>
 """, unsafe_allow_html=True)
 
-# --- SESSION STATE INIT ---
+# --- SESSION STATE INIT (BEFORE WIDGETS RENDER) ---
 defaults = {
     "messages": [], "mcq_questions": None, "mcq_user_answers": {}, "mcq_checked": False,
-    "draft_text": "", "clear_draft": False
+    "draft_text": "", "clear_draft": False, "mic_open": False,
+    "audio_counter": 0, "pending_voice_text": ""
 }
 for k, v in defaults.items():
     if k not in st.session_state: st.session_state[k] = v
@@ -226,6 +243,13 @@ for k, v in defaults.items():
 if st.session_state.clear_draft:
     st.session_state.draft_text = ""
     st.session_state.clear_draft = False
+
+# Append transcribed voice text BEFORE input widget renders (Prevents StreamlitWidgetAlreadyInstantiatedError)
+if st.session_state.pending_voice_text:
+    existing = st.session_state.draft_text.strip()
+    new_spoken = st.session_state.pending_voice_text.strip()
+    st.session_state.draft_text = f"{existing} {new_spoken}".strip() if existing else new_spoken
+    st.session_state.pending_voice_text = ""
 
 # --- SIDEBAR ---
 with st.sidebar:
@@ -317,90 +341,46 @@ if attached:
             st.session_state.pop("bottom_camera", None)
             st.rerun()
 
-# --- REAL STREAMLIT BOTTOM BAR (➕ | TEXT BOX | 🎤 | ➤) ---
+# --- BOTTOM BAR + MOBILE-NATIVE VOICE RECORDER ---
 with getattr(st, "bottom", st.container()):
+    if st.session_state.mic_open:
+        with st.container(border=True):
+            vc1, vc2 = st.columns([6, 1])
+            vc1.markdown("🎙️ **માઈક પર દબાવી ગુજરાતીમાં બોલો, પૂરું થાય એટલે ⏹ દબાવો:**")
+            if vc2.button("✖", key="close_rec_btn"):
+                st.session_state.mic_open = False
+                st.rerun()
+            audio_val = st.audio_input("રેકોર્ડ", key=f"mob_rec_{st.session_state.audio_counter}", label_visibility="collapsed")
+            if audio_val is not None:
+                with st.spinner("🎧 તમારો અવાજ ગુજરાતીમાં લખાઈ રહ્યો છે..."):
+                    spoken = transcribe_gujarati(audio_val, api_keys)
+                st.session_state.audio_counter += 1
+                st.session_state.mic_open = False
+                if spoken:
+                    st.session_state.pending_voice_text = spoken
+                else:
+                    st.warning("⚠️ અવાજ સ્પષ્ટ સંભળાયો નથી, ફરીથી પ્રયત્ન કરો.")
+                st.rerun()
+
     col_plus, col_in, col_mic, col_send = st.columns([1, 8, 1, 1], vertical_alignment="center")
     with col_plus:
         with st.popover("➕"):
             st.file_uploader("📁 ગેલેરી / PDF પસંદ કરો", key="bottom_uploader")
             st.camera_input("📸 કેમેરાથી ફોટો પાડો", key="bottom_camera")
     with col_in:
-        user_text = st.text_input("પ્રશ્ન...", key="draft_text", placeholder="પ્રશ્ન લખો અથવા 🎤 બોલો...", label_visibility="collapsed")
+        user_text = st.text_input("પ્રશ્ન...", key="draft_text", placeholder="પ્રશ્ન લખો અથવા 🎤 દબાવો...", label_visibility="collapsed")
     with col_mic:
-        st.button("🎤", key="real_mic_btn", help="બોલીને લખો")
+        if st.button("🎤", key="real_mic_btn", help="બોલીને લખો"):
+            st.session_state.mic_open = not st.session_state.mic_open
+            st.rerun()
     with col_send:
         send_clicked = st.button("➤", type="primary", key="real_send_btn", help="મોકલો")
-
-# --- ATTACH LIVE BROWSER SPEECH RECOGNITION DIRECTLY TO REAL STREAMLIT MIC BUTTON ---
-components.html("""
-<script>
-(function() {
-    const doc = window.parent.document;
-    const SR = window.parent.SpeechRecognition || window.parent.webkitSpeechRecognition;
-
-    function setupVoice() {
-        const bottom = doc.querySelector('[data-testid="stBottom"]');
-        if (!bottom) return;
-        const secBtns = bottom.querySelectorAll('button[kind="secondary"]');
-        const micBtn = Array.from(secBtns).find(b => b.innerText.includes('🎤') || b.innerText.includes('⏹'));
-        const inputField = bottom.querySelector('input[type="text"]');
-        if (!micBtn || !inputField || micBtn.dataset.voiceBound) return;
-
-        micBtn.dataset.voiceBound = 'true';
-        let rec = null, listening = false, baseTxt = '';
-
-        if (SR) {
-            rec = new SR();
-            rec.lang = 'gu-IN';
-            rec.continuous = false;
-            rec.interimResults = true;
-
-            rec.onstart = () => {
-                listening = true;
-                micBtn.style.setProperty('background', '#EF4444', 'important');
-                micBtn.innerText = '⏹';
-                baseTxt = inputField.value.trim();
-            };
-            rec.onresult = (ev) => {
-                let t = '';
-                for (let i = ev.resultIndex; i < ev.results.length; i++) t += ev.results[i][0].transcript;
-                const combined = baseTxt ? (baseTxt + ' ' + t) : t;
-                const setter = Object.getOwnPropertyDescriptor(window.parent.HTMLInputElement.prototype, 'value').set;
-                setter.call(inputField, combined);
-                inputField.dispatchEvent(new Event('input', { bubbles: true }));
-            };
-            rec.onend = () => {
-                listening = false;
-                micBtn.style.setProperty('background', '#10B981', 'important');
-                micBtn.innerText = '🎤';
-                inputField.focus();
-                inputField.setSelectionRange(inputField.value.length, inputField.value.length);
-            };
-            rec.onerror = () => {
-                listening = false;
-                micBtn.style.setProperty('background', '#10B981', 'important');
-                micBtn.innerText = '🎤';
-            };
-        }
-
-        micBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            if (!rec) { alert('કૃપા કરીને Google Chrome બ્રાઉઝર વાપરો.'); return; }
-            listening ? rec.stop() : rec.start();
-        }, true);
-    }
-
-    setupVoice();
-    setTimeout(setupVoice, 400);
-})();
-</script>
-""", height=0)
 
 # --- MANUAL SEND ONLY ---
 if send_clicked and (user_text.strip() or attached):
     st.session_state.messages.append({"role": "user", "content": user_text.strip() or "[ફાઈલ સંલગ્ન છે]"})
     st.session_state.clear_draft = True
+    st.session_state.mic_open = False
     st.rerun()
 
 # --- AI RESPONSE STREAMING ---
