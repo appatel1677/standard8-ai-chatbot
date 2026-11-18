@@ -11,7 +11,7 @@ try:
 except ImportError:
     HAS_GENAI = False
 
-st.set_page_config(page_title="ધોરણ 3 થી 8 - સ્માર્ટ AI શિક્ષક", page_icon="📚", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="Standard 3 to 8 Smart AI Palaj Teacher", page_icon="📚", layout="wide", initial_sidebar_state="collapsed")
 
 # --- HELPER FUNCTIONS ---
 def parse_mcq(text):
@@ -50,7 +50,7 @@ def build_pdf_bytes(messages, subj, chap):
         pdf.add_font("Gujarati", "B", font_path)
     pdf.add_page()
     pdf.set_font(base_font, "B", 15)
-    pdf.cell(0, 10, f"ધોરણ 3 થી 8 - AI સ્ટડી નોટ્સ ({subj} | {chap})", ln=True, align="C")
+    pdf.cell(0, 10, f"Standard 3 to 8 Smart AI Palaj Teacher ({subj} | {chap})", ln=True, align="C")
     pdf.ln(4)
     for m in messages:
         pdf.set_font(base_font, "B", 11)
@@ -61,7 +61,6 @@ def build_pdf_bytes(messages, subj, chap):
     return bytes(pdf.output(dest="S"))
 
 def transcribe_gujarati(audio_file, api_keys):
-    """Dynamic MIME type support for Android/iOS mobile & desktop."""
     if not HAS_GENAI or not api_keys or not audio_file: return ""
     audio_bytes = audio_file.getvalue()
     mime = getattr(audio_file, "type", None) or "audio/webm"
@@ -91,55 +90,148 @@ ALL_GRADES_REF = "\n".join(
     for g, d in syllabus_data.items() if d.get("subjects")
 )
 
-# --- COMPACT MOBILE & DESKTOP CSS ---
+# --- MOBILE-FIRST RESPONSIVE CSS (NO HORIZONTAL SCROLL) ---
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Gujarati:wght@400;600;700&display=swap');
-html, body, p, h1, h2, h3, input, textarea, button, .stMarkdown, .stChatMessage {
+
+html, body, .stApp {
+    max-width: 100vw !important;
+    overflow-x: hidden !important;
+    font-family: 'Noto Sans Gujarati', sans-serif !important;
+}
+p, h1, h2, h3, input, textarea, button, .stMarkdown, .stChatMessage {
     font-family: 'Noto Sans Gujarati', sans-serif !important;
 }
 [data-testid="stIconMaterial"], .material-symbols-rounded, span[translate="no"] {
     font-family: 'Material Symbols Rounded' !important;
 }
-.app-banner {
-    background: linear-gradient(135deg, #1E3A8A, #3B82F6); color: #fff;
-    padding: 1rem; border-radius: 14px; margin-bottom: 0.75rem;
-}
-.app-banner h1 { margin: 0; font-size: 1.4rem; }
-.app-banner p { margin: 0.2rem 0 0; font-size: 0.88rem; opacity: 0.95; }
-.subject-pill {
-    display: inline-block; background: linear-gradient(135deg, #F59E0B, #D97706);
-    color: #fff; padding: 0.35rem 0.85rem; border-radius: 999px;
-    font-size: 0.85rem; font-weight: 600; margin-bottom: 0.75rem;
-}
-.stChatMessage[data-message-role="user"] { background: #EFF6FF !important; border-left: 4px solid #3B82F6 !important; }
-.stChatMessage[data-message-role="assistant"] { background: #F0FDF4 !important; border-left: 4px solid #10B981 !important; }
 
-/* BOTTOM CHATGPT-STYLE PILL BAR */
-[data-testid="stBottom"] { padding: 0.4rem 0.6rem !important; background: transparent !important; z-index: 99999 !important; }
+/* ATTRACTIVE ROUNDED BLUE BANNER */
+.app-banner {
+    background: linear-gradient(135deg, #1E3A8A 0%, #2563EB 50%, #0EA5E9 100%);
+    color: #ffffff;
+    padding: 0.9rem 1.25rem;
+    border-radius: 28px;
+    margin-bottom: 0.75rem;
+    text-align: center;
+    box-shadow: 0 8px 20px rgba(37, 99, 235, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+.app-banner h1 {
+    margin: 0;
+    font-size: 1.25rem;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+}
+
+.subject-pill {
+    display: inline-block;
+    background: linear-gradient(135deg, #F59E0B, #D97706);
+    color: #fff;
+    padding: 0.35rem 0.9rem;
+    border-radius: 999px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    margin-bottom: 0.75rem;
+}
+
+.stChatMessage[data-message-role="user"] { background: #EFF6FF !important; border-left: 4px solid #3B82F6 !important; border-radius: 16px !important; }
+.stChatMessage[data-message-role="assistant"] { background: #F0FDF4 !important; border-left: 4px solid #10B981 !important; border-radius: 16px !important; }
+
+/* FIXED BOTTOM INPUT BAR (PERFECT MOBILE FIT) */
+[data-testid="stBottom"] {
+    padding: 0.4rem 0.5rem !important;
+    background: transparent !important;
+    width: 100vw !important;
+    max-width: 100% !important;
+    left: 0 !important;
+    right: 0 !important;
+    box-sizing: border-box !important;
+    z-index: 99999 !important;
+}
+[data-testid="stBottom"] > div {
+    padding: 0 !important;
+    max-width: 820px !important;
+    margin: 0 auto !important;
+}
 [data-testid="stBottom"] [data-testid="stHorizontalBlock"] {
-    display: flex !important; flex-direction: row !important; flex-wrap: nowrap !important;
-    align-items: center !important; gap: 5px !important; background: #2f2f2f !important;
-    border: 1px solid #4a4a4a !important; border-radius: 999px !important;
-    padding: 4px 8px !important; max-width: 820px !important; margin: 0 auto !important;
+    display: grid !important;
+    grid-template-columns: 34px minmax(0, 1fr) 36px 36px !important;
+    align-items: center !important;
+    gap: 4px !important;
+    background: #2f2f2f !important;
+    border: 1px solid #4a4a4a !important;
+    border-radius: 999px !important;
+    padding: 4px 6px !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
 }
-[data-testid="stBottom"] [data-testid="stColumn"] { width: auto !important; flex: 0 0 auto !important; padding: 0 !important; }
-[data-testid="stBottom"] [data-testid="stColumn"]:nth-child(2) { flex: 1 1 auto !important; min-width: 0 !important; }
+[data-testid="stBottom"] [data-testid="stColumn"] {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+}
 [data-testid="stBottom"] input[type="text"] {
-    background: #2f2f2f !important; color: #fff !important; -webkit-text-fill-color: #fff !important;
-    border: none !important; padding: 6px !important; font-size: 0.95rem !important;
+    background: #2f2f2f !important;
+    color: #fff !important;
+    -webkit-text-fill-color: #fff !important;
+    border: none !important;
+    padding: 6px 4px !important;
+    font-size: 0.92rem !important;
+    width: 100% !important;
 }
-[data-testid="stBottom"] div[data-baseweb="input"] { background: #2f2f2f !important; border: none !important; }
-[data-testid="stBottom"] [data-testid="InputInstructions"], [data-testid="stBottom"] [data-testid="stPopover"] svg { display: none !important; }
+[data-testid="stBottom"] div[data-baseweb="input"] {
+    background: #2f2f2f !important;
+    border: none !important;
+}
+[data-testid="stBottom"] [data-testid="InputInstructions"],
+[data-testid="stBottom"] [data-testid="stPopover"] svg {
+    display: none !important;
+}
 [data-testid="stBottom"] button {
-    border-radius: 50% !important; width: 36px !important; height: 36px !important; min-height: 36px !important;
-    padding: 0 !important; border: none !important; color: #fff !important;
+    border-radius: 50% !important;
+    width: 34px !important;
+    height: 34px !important;
+    min-height: 34px !important;
+    padding: 0 !important;
+    border: none !important;
+    color: #fff !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
 }
-[data-testid="stBottom"] button[kind="secondary"], [data-testid="stBottom"] [data-testid="stPopover"] > button { background: transparent !important; font-size: 18px !important; }
-[data-testid="stBottom"] button[kind="primary"] { background: #2563EB !important; }
+[data-testid="stBottom"] button[kind="secondary"],
+[data-testid="stBottom"] [data-testid="stPopover"] > button {
+    background: #3f3f3f !important;
+    font-size: 16px !important;
+}
+[data-testid="stBottom"] button[kind="primary"] {
+    background: #2563EB !important;
+    font-size: 15px !important;
+}
+
+/* HIDE COMPONENT IFRAME SPACE */
+iframe[height="0"] {
+    display: none !important;
+    position: absolute !important;
+}
+
 @media (max-width: 768px) {
-    .block-container { padding: 0.5rem 0.6rem 5.5rem !important; }
-    .app-banner h1 { font-size: 1.15rem; }
+    .block-container {
+        padding: 0.5rem 0.65rem 6rem !important;
+        max-width: 100vw !important;
+        overflow-x: hidden !important;
+    }
+    .app-banner {
+        padding: 0.75rem 0.9rem;
+        border-radius: 24px;
+    }
+    .app-banner h1 {
+        font-size: 1.05rem;
+    }
 }
 </style>
 """, unsafe_allow_html=True)
@@ -153,7 +245,6 @@ defaults = {
 for k, v in defaults.items():
     if k not in st.session_state: st.session_state[k] = v
 
-# Safely clear draft_text BEFORE st.text_input is created
 if st.session_state.clear_draft:
     st.session_state.draft_text = ""
     st.session_state.clear_draft = False
@@ -208,8 +299,8 @@ with st.sidebar:
             mime = "text/plain"
         st.download_button("⬇️ ડાઉનલોડ કરો", data=data, file_name=f"notes_{s_name}{dl_fmt}", mime=mime, use_container_width=True)
 
-# --- HEADER & CHAT HISTORY ---
-st.markdown('<div class="app-banner"><h1>📚 ધોરણ 3 થી 8 સ્માર્ટ AI શિક્ષક</h1><p>સીધો પ્રશ્ન લખો, બોલીને એડિટ કરો અથવા ફોટો અપલોડ કરો!</p></div>', unsafe_allow_html=True)
+# --- HEADER & PILL ---
+st.markdown('<div class="app-banner"><h1>📚 standard 3 to 8 smart AI palaj teacher</h1></div>', unsafe_allow_html=True)
 pill_txt = f"🎓 {grade_choice} | 📌 {sel_subj} | {sel_chap['name'] if sel_chap else 'બધા પ્રકરણો'}" if not is_auto and sel_subj else "✨ સ્માર્ટ મોડ (ધોરણ 3 થી 8)"
 st.markdown(f'<div class="subject-pill">{pill_txt}</div>', unsafe_allow_html=True)
 
@@ -255,29 +346,6 @@ if st.session_state.mcq_questions:
                 st.markdown(f"**પ્રશ્ન {i+1}:** {'✅ સાચો!' if ua == ca else f'❌ ખોટો! સાચો જવાબ: **{ca}. {correct_opt}**'}")
                 if q.get("explanation"): st.caption(f"💡 સમજૂતી: {q['explanation']}")
 
-# --- VOICE RECORDER (NO AUTO-SEND + APPEND + AUTO-FOCUS) ---
-if st.session_state.show_voice:
-    with st.container(border=True):
-        v1, v2 = st.columns([6, 1])
-        v1.markdown("🎙️ **ગુજરાતીમાં બોલો (પૂરું થાય એટલે ⏹ દબાવો) — લખાણ નીચેના બોક્સમાં ઉમેરાશે:**")
-        if v2.button("✖", key="close_mic"):
-            st.session_state.show_voice = False
-            st.session_state.focus_input = True
-            st.rerun()
-        audio_val = st.audio_input("રેકોર્ડ", key=f"rec_{st.session_state.audio_counter}", label_visibility="collapsed")
-        if audio_val:
-            with st.spinner("🎧 અવાજ ગુજરાતીમાં લખાઈ રહ્યો છે..."):
-                spoken = transcribe_gujarati(audio_val, api_keys)
-            st.session_state.audio_counter += 1
-            st.session_state.show_voice = False
-            if spoken:
-                existingText = st.session_state.draft_text.strip()
-                st.session_state.draft_text = f"{existingText} {spoken}".strip() if existingText else spoken
-                st.session_state.focus_input = True
-            else:
-                st.warning("⚠️ અવાજ સ્પષ્ટ સંભળાયો નથી, ફરીથી પ્રયત્ન કરો.")
-            st.rerun()
-
 # --- ATTACHMENT PREVIEW ---
 attached = st.session_state.get("bottom_uploader") or st.session_state.get("bottom_camera")
 if attached:
@@ -293,23 +361,45 @@ if attached:
             st.session_state.pop("bottom_camera", None)
             st.rerun()
 
-# --- BOTTOM INPUT BAR ---
+# --- BOTTOM INPUT BAR + VOICE RECORDER INSIDE BOTTOM CONTAINER ---
 with getattr(st, "bottom", st.container()):
-    col_plus, col_in, col_mic, col_send = st.columns([1, 10, 1, 1], vertical_alignment="center")
+    if st.session_state.show_voice:
+        with st.container(border=True):
+            v1, v2 = st.columns([6, 1])
+            v1.markdown("🎙️ **બોલો અને પૂરું થાય એટલે ⏹ દબાવો:**")
+            if v2.button("✖", key="close_mic"):
+                st.session_state.show_voice = False
+                st.session_state.focus_input = True
+                st.rerun()
+            audio_val = st.audio_input("રેકોર્ડ", key=f"rec_{st.session_state.audio_counter}", label_visibility="collapsed")
+            if audio_val:
+                with st.spinner("🎧 ગુજરાતીમાં લખાઈ રહ્યું છે..."):
+                    spoken = transcribe_gujarati(audio_val, api_keys)
+                st.session_state.audio_counter += 1
+                st.session_state.show_voice = False
+                if spoken:
+                    existingText = st.session_state.draft_text.strip()
+                    st.session_state.draft_text = f"{existingText} {spoken}".strip() if existingText else spoken
+                    st.session_state.focus_input = True
+                else:
+                    st.warning("⚠️ અવાજ સ્પષ્ટ સંભળાયો નથી, ફરીથી પ્રયત્ન કરો.")
+                st.rerun()
+
+    col_plus, col_in, col_mic, col_send = st.columns([1, 8, 1, 1], vertical_alignment="center")
     with col_plus:
         with st.popover("➕"):
             st.file_uploader("📁 ગેલેરી / PDF", key="bottom_uploader")
             st.camera_input("📸 કેમેરા", key="bottom_camera")
     with col_in:
-        user_text = st.text_input("પ્રશ્ન...", key="draft_text", placeholder="પ્રશ્ન લખો અથવા 🎤 દબાવીને બોલો...", label_visibility="collapsed")
+        user_text = st.text_input("પ્રશ્ન...", key="draft_text", placeholder="પ્રશ્ન લખો અથવા 🎤 દબાવો...", label_visibility="collapsed")
     with col_mic:
-        if st.button("🎤", help="બોલીને લખો (અથવા વધુ શબ્દો ઉમેરો)"):
+        if st.button("🎤", help="બોલીને લખો"):
             st.session_state.show_voice = not st.session_state.show_voice
             st.rerun()
     with col_send:
         send_clicked = st.button("➤", type="primary", help="મોકલો")
 
-# --- AUTO-FOCUS & CURSOR TO END OF INPUT BOX AFTER SPEAKING ---
+# --- AUTO-FOCUS & CURSOR TO END AFTER SPEAKING ---
 if st.session_state.focus_input:
     st.session_state.focus_input = False
     components.html("""
