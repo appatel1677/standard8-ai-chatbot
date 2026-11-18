@@ -39,7 +39,7 @@ def get_pdf_font():
     except Exception:
         return None
 
-def build_pdf_bytes(messages, subj, chap):
+def build_pdf_bytes(messages):
     pdf = FPDF()
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.set_text_shaping(True)
@@ -50,7 +50,7 @@ def build_pdf_bytes(messages, subj, chap):
         pdf.add_font("Gujarati", "B", font_path)
     pdf.add_page()
     pdf.set_font(base_font, "B", 15)
-    pdf.cell(0, 10, f"Standard 3 to 8 Smart AI Palaj Teacher ({subj} | {chap})", ln=True, align="C")
+    pdf.cell(0, 10, "Standard 3 to 8 Smart AI Palaj Teacher - Notes", ln=True, align="C")
     pdf.ln(4)
     for m in messages:
         pdf.set_font(base_font, "B", 11)
@@ -59,23 +59,6 @@ def build_pdf_bytes(messages, subj, chap):
         pdf.multi_cell(0, 6, m["content"])
         pdf.ln(2)
     return bytes(pdf.output(dest="S"))
-
-def transcribe_gujarati(audio_file, api_keys):
-    if not HAS_GENAI or not api_keys or not audio_file: return ""
-    audio_bytes = audio_file.getvalue()
-    mime = getattr(audio_file, "type", None) or "audio/webm"
-    prompt = "આ ઓડિયોમાં જે બોલાયું છે તે ફક્ત ગુજરાતી લિપિમાં લખો. કોઈ વધારાનું લખાણ લખશો નહીં."
-    for key in api_keys:
-        try:
-            client = genai.Client(api_key=key)
-            resp = client.models.generate_content(
-                model="gemini-2.5-flash-lite",
-                contents=[types.Part.from_bytes(data=audio_bytes, mime_type=mime), prompt]
-            )
-            if resp and resp.text: return resp.text.strip()
-        except Exception:
-            continue
-    return ""
 
 @st.cache_data
 def load_syllabus():
@@ -90,12 +73,12 @@ ALL_GRADES_REF = "\n".join(
     for g, d in syllabus_data.items() if d.get("subjects")
 )
 
-# --- MOBILE-FIRST RESPONSIVE CSS (NO HORIZONTAL SCROLL) ---
+# --- CLEAN, ZERO-OVERFLOW CSS ---
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Gujarati:wght@400;600;700&display=swap');
 
-html, body, .stApp {
+html, body, [data-testid="stAppViewContainer"], .main {
     max-width: 100vw !important;
     overflow-x: hidden !important;
     font-family: 'Noto Sans Gujarati', sans-serif !important;
@@ -107,63 +90,62 @@ p, h1, h2, h3, input, textarea, button, .stMarkdown, .stChatMessage {
     font-family: 'Material Symbols Rounded' !important;
 }
 
-/* ATTRACTIVE ROUNDED BLUE BANNER */
-.app-banner {
-    background: linear-gradient(135deg, #1E3A8A 0%, #2563EB 50%, #0EA5E9 100%);
-    color: #ffffff;
-    padding: 0.9rem 1.25rem;
-    border-radius: 28px;
-    margin-bottom: 0.75rem;
-    text-align: center;
-    box-shadow: 0 8px 20px rgba(37, 99, 235, 0.3);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-}
-.app-banner h1 {
-    margin: 0;
-    font-size: 1.25rem;
-    font-weight: 700;
-    letter-spacing: 0.3px;
-}
-
-.subject-pill {
-    display: inline-block;
-    background: linear-gradient(135deg, #F59E0B, #D97706);
-    color: #fff;
-    padding: 0.35rem 0.9rem;
-    border-radius: 999px;
-    font-size: 0.82rem;
-    font-weight: 600;
-    margin-bottom: 0.75rem;
-}
-
-.stChatMessage[data-message-role="user"] { background: #EFF6FF !important; border-left: 4px solid #3B82F6 !important; border-radius: 16px !important; }
-.stChatMessage[data-message-role="assistant"] { background: #F0FDF4 !important; border-left: 4px solid #10B981 !important; border-radius: 16px !important; }
-
-/* FIXED BOTTOM INPUT BAR (PERFECT MOBILE FIT) */
-[data-testid="stBottom"] {
-    padding: 0.4rem 0.5rem !important;
-    background: transparent !important;
-    width: 100vw !important;
-    max-width: 100% !important;
-    left: 0 !important;
-    right: 0 !important;
-    box-sizing: border-box !important;
-    z-index: 99999 !important;
-}
-[data-testid="stBottom"] > div {
-    padding: 0 !important;
+.block-container {
+    padding-top: 2.8rem !important;
+    padding-bottom: 5.5rem !important;
+    padding-left: 0.75rem !important;
+    padding-right: 0.75rem !important;
     max-width: 820px !important;
     margin: 0 auto !important;
 }
+
+/* SLIM ROUNDED BLUE HEADER */
+.slim-header {
+    background: linear-gradient(90deg, #1E3A8A 0%, #2563EB 50%, #0284C7 100%);
+    color: #ffffff;
+    padding: 9px 16px;
+    border-radius: 50px;
+    text-align: center;
+    font-size: 1.05rem;
+    font-weight: 700;
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
+    margin-bottom: 10px;
+}
+
+.stChatMessage[data-message-role="user"] {
+    background: #EFF6FF !important;
+    border-left: 4px solid #3B82F6 !important;
+    border-radius: 14px !important;
+    padding: 0.6rem 0.9rem !important;
+}
+.stChatMessage[data-message-role="assistant"] {
+    background: #F0FDF4 !important;
+    border-left: 4px solid #10B981 !important;
+    border-radius: 14px !important;
+    padding: 0.6rem 0.9rem !important;
+}
+
+/* REAL STREAMLIT BOTTOM BAR STYLED AS SINGLE-ROW PILL (DESKTOP + MOBILE) */
+[data-testid="stBottom"] {
+    padding: 0.4rem 0.5rem !important;
+    background: transparent !important;
+    z-index: 99999 !important;
+}
+[data-testid="stBottom"] > div {
+    max-width: 820px !important;
+    margin: 0 auto !important;
+    padding: 0 !important;
+}
 [data-testid="stBottom"] [data-testid="stHorizontalBlock"] {
     display: grid !important;
-    grid-template-columns: 34px minmax(0, 1fr) 36px 36px !important;
+    grid-template-columns: 36px minmax(0, 1fr) 36px 36px !important;
     align-items: center !important;
-    gap: 4px !important;
-    background: #2f2f2f !important;
-    border: 1px solid #4a4a4a !important;
+    gap: 5px !important;
+    background: #1f2937 !important;
+    border: 1px solid #374151 !important;
     border-radius: 999px !important;
-    padding: 4px 6px !important;
+    padding: 5px 7px !important;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28) !important;
     width: 100% !important;
     box-sizing: border-box !important;
 }
@@ -175,16 +157,22 @@ p, h1, h2, h3, input, textarea, button, .stMarkdown, .stChatMessage {
     margin: 0 !important;
 }
 [data-testid="stBottom"] input[type="text"] {
-    background: #2f2f2f !important;
-    color: #fff !important;
-    -webkit-text-fill-color: #fff !important;
+    background: #ffffff !important;
+    color: #111827 !important;
+    -webkit-text-fill-color: #111827 !important;
+    caret-color: #111827 !important;
+    border-radius: 999px !important;
     border: none !important;
-    padding: 6px 4px !important;
-    font-size: 0.92rem !important;
-    width: 100% !important;
+    padding: 6px 12px !important;
+    font-size: 0.95rem !important;
+}
+[data-testid="stBottom"] input[type="text"]::placeholder {
+    color: #6B7280 !important;
+    -webkit-text-fill-color: #6B7280 !important;
 }
 [data-testid="stBottom"] div[data-baseweb="input"] {
-    background: #2f2f2f !important;
+    background: #ffffff !important;
+    border-radius: 999px !important;
     border: none !important;
 }
 [data-testid="stBottom"] [data-testid="InputInstructions"],
@@ -193,19 +181,22 @@ p, h1, h2, h3, input, textarea, button, .stMarkdown, .stChatMessage {
 }
 [data-testid="stBottom"] button {
     border-radius: 50% !important;
-    width: 34px !important;
-    height: 34px !important;
-    min-height: 34px !important;
+    width: 36px !important;
+    height: 36px !important;
+    min-height: 36px !important;
     padding: 0 !important;
     border: none !important;
-    color: #fff !important;
+    color: #ffffff !important;
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
 }
-[data-testid="stBottom"] button[kind="secondary"],
 [data-testid="stBottom"] [data-testid="stPopover"] > button {
-    background: #3f3f3f !important;
+    background: #374151 !important;
+    font-size: 16px !important;
+}
+[data-testid="stBottom"] button[kind="secondary"] {
+    background: #10B981 !important;
     font-size: 16px !important;
 }
 [data-testid="stBottom"] button[kind="primary"] {
@@ -213,34 +204,21 @@ p, h1, h2, h3, input, textarea, button, .stMarkdown, .stChatMessage {
     font-size: 15px !important;
 }
 
-/* HIDE COMPONENT IFRAME SPACE */
 iframe[height="0"] {
     display: none !important;
     position: absolute !important;
 }
 
-@media (max-width: 768px) {
-    .block-container {
-        padding: 0.5rem 0.65rem 6rem !important;
-        max-width: 100vw !important;
-        overflow-x: hidden !important;
-    }
-    .app-banner {
-        padding: 0.75rem 0.9rem;
-        border-radius: 24px;
-    }
-    .app-banner h1 {
-        font-size: 1.05rem;
-    }
+@media (max-width: 600px) {
+    .slim-header { font-size: 0.9rem; padding: 7px 10px; }
 }
 </style>
 """, unsafe_allow_html=True)
 
-# --- SESSION STATE INIT (BEFORE WIDGETS RENDER) ---
+# --- SESSION STATE INIT ---
 defaults = {
     "messages": [], "mcq_questions": None, "mcq_user_answers": {}, "mcq_checked": False,
-    "show_voice": False, "audio_counter": 0, "draft_text": "", "focus_input": False,
-    "clear_draft": False
+    "draft_text": "", "clear_draft": False
 }
 for k, v in defaults.items():
     if k not in st.session_state: st.session_state[k] = v
@@ -251,29 +229,12 @@ if st.session_state.clear_draft:
 
 # --- SIDEBAR ---
 with st.sidebar:
-    st.markdown("### 🎓 સ્માર્ટ AI શિક્ષક (GCERT)")
+    st.markdown("### 🎓 સ્માર્ટ AI શિક્ષક")
     raw_keys = (st.secrets.get("GEMINI_API_KEYS") or os.environ.get("GEMINI_API_KEYS") or
                 st.secrets.get("GEMINI_API_KEY") or os.environ.get("GEMINI_API_KEY") or "")
     api_keys = [k.strip().strip('"\'') for k in str(raw_keys).split(",") if k.strip()]
 
     model_choice = st.selectbox("🤖 AI મોડેલ:", ["gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-3.5-flash-lite"])
-    grade_choice = st.selectbox("🎓 ધોરણ:", ["🎯 આપમેળે ઓળખો (Auto)"] + [f"ધોરણ {i}" for i in range(3, 9)])
-
-    is_auto = grade_choice.startswith("🎯")
-    sel_subj, sel_chap, chapters = None, None, []
-    if not is_auto:
-        subjs = syllabus_data.get(grade_choice, {}).get("subjects", {})
-        if subjs:
-            sel_subj = st.selectbox("📖 વિષય:", list(subjs.keys()))
-            chapters = subjs[sel_subj].get("chapters", [])
-            ch_opts = ["બધા પ્રકરણો / સામાન્ય પ્રશ્ન"] + [
-                f"પ્રકરણ {i}: " + re.sub(r'^(?:પ્રકરણ\s*\d+\s*[:\-\.]\s*|\d+[\.\)]\s*)', '', c.get("name", "")).strip()
-                for i, c in enumerate(chapters, 1)
-            ]
-            ch_idx = st.selectbox("📑 પ્રકરણ:", range(len(ch_opts)), format_func=lambda i: ch_opts[i])
-            if ch_idx > 0: sel_chap = chapters[ch_idx - 1]
-    else:
-        st.info("💡 સીધો કોઈ પણ ધોરણ કે વિષયનો પ્રશ્ન પૂછી શકો છો!")
 
     st.markdown("### 🛠️ ક્વિક ટૂલ્સ")
     quick_action = None
@@ -291,30 +252,27 @@ with st.sidebar:
     u1, u2 = st.columns([1, 2])
     dl_fmt = u1.selectbox("ફોર્મેટ", [".pdf", ".txt", ".md"], label_visibility="collapsed")
     if u2.button("📥 નોટ્સ", use_container_width=True) and st.session_state.messages:
-        s_name, c_name = sel_subj or "સામાન્ય", sel_chap["name"] if sel_chap else "બધા પ્રકરણો"
         if dl_fmt == ".pdf":
-            data, mime = build_pdf_bytes(st.session_state.messages, s_name, c_name), "application/pdf"
+            data, mime = build_pdf_bytes(st.session_state.messages), "application/pdf"
         else:
             data = "\n\n".join(f"{'વિદ્યાર્થી' if m['role']=='user' else 'શિક્ષક'}: {m['content']}" for m in st.session_state.messages)
             mime = "text/plain"
-        st.download_button("⬇️ ડાઉનલોડ કરો", data=data, file_name=f"notes_{s_name}{dl_fmt}", mime=mime, use_container_width=True)
+        st.download_button("⬇️ ડાઉનલોડ", data=data, file_name=f"notes{dl_fmt}", mime=mime, use_container_width=True)
 
-# --- HEADER & PILL ---
-st.markdown('<div class="app-banner"><h1>📚 standard 3 to 8 smart AI palaj teacher</h1></div>', unsafe_allow_html=True)
-pill_txt = f"🎓 {grade_choice} | 📌 {sel_subj} | {sel_chap['name'] if sel_chap else 'બધા પ્રકરણો'}" if not is_auto and sel_subj else "✨ સ્માર્ટ મોડ (ધોરણ 3 થી 8)"
-st.markdown(f'<div class="subject-pill">{pill_txt}</div>', unsafe_allow_html=True)
+# --- SLIM HEADER ---
+st.markdown('<div class="slim-header">📚 standard 3 to 8 smart AI palaj teacher</div>', unsafe_allow_html=True)
 
 if quick_action:
-    tg, ts, cl = ("ધોરણ 3 થી 8" if is_auto else grade_choice), (sel_subj or "સંબંધિત વિષય"), (sel_chap["name"] if sel_chap else "છેલ્લી ચર્ચા મુજબના પ્રકરણ")
     prompts = {
-        "summary": f"{tg} ના {ts} ના '{cl}' નો સરળ ગુજરાતીમાં મુદ્દાસર સારાંશ આપો.",
-        "exercise": f"{tg} ના {ts} ના '{cl}' ના સ્વાધ્યાયના પ્રશ્નો અને જવાબો સમજૂતી સાથે આપો.",
-        "mcq": f"{tg} ના {ts} ના '{cl}' આધારિત ગુજરાતીમાં ૫ MCQ બનાવો. ફોર્મેટ:\nપ્રશ્ન 1: પ્રશ્ન?\nA. ...\nB. ...\nC. ...\nD. ...\nસાચો જવાબ: B\nસમજૂતી: ...",
-        "easy_example": f"{tg} ના {ts} ના '{cl}' નું વાસ્તવિક જીવનના સરળ ઉદાહરણો દ્વારા સમજાવો."
+        "summary": "છેલ્લી ચર્ચા મુજબના પાઠનો સરળ ગુજરાતીમાં મુદ્દાસર સારાંશ આપો.",
+        "exercise": "છેલ્લી ચર્ચા મુજબના પાઠના સ્વાધ્યાયના પ્રશ્નો અને જવાબો સમજૂતી સાથે આપો.",
+        "mcq": "છેલ્લી ચર્ચા મુજબના પાઠ આધારિત ગુજરાતીમાં ૫ MCQ બનાવો. ફોર્મેટ:\nપ્રશ્ન 1: પ્રશ્ન?\nA. ...\nB. ...\nC. ...\nD. ...\nસાચો જવાબ: B\nસમજૂતી: ...",
+        "easy_example": "છેલ્લી ચર્ચા મુજબના વિષયનું વાસ્તવિક જીવનના સરળ ઉદાહરણો દ્વારા સમજાવો."
     }
     if quick_action == "mcq": st.session_state.update({"mcq_questions": None, "mcq_user_answers": {}, "mcq_checked": False})
     st.session_state.messages.append({"role": "user", "content": prompts[quick_action]})
 
+# --- CHAT MESSAGES ---
 for m in st.session_state.messages:
     with st.chat_message(m["role"]): st.markdown(m["content"])
 
@@ -351,70 +309,93 @@ attached = st.session_state.get("bottom_uploader") or st.session_state.get("bott
 if attached:
     with st.container(border=True):
         t1, t2, t3 = st.columns([1, 6, 1])
-        try:
-            t1.image(Image.open(io.BytesIO(attached.getvalue())), width=45)
-        except Exception:
-            t1.markdown("📎")
-        t2.caption(f"📎 જોડાયેલ ફાઈલ: {getattr(attached, 'name', 'ફોટો')}")
+        try: t1.image(Image.open(io.BytesIO(attached.getvalue())), width=45)
+        except Exception: t1.markdown("📎")
+        t2.caption(f"📎 જોડાયેલ: {getattr(attached, 'name', 'ફોટો')}")
         if t3.button("❌", key="rm_att"):
             st.session_state.pop("bottom_uploader", None)
             st.session_state.pop("bottom_camera", None)
             st.rerun()
 
-# --- BOTTOM INPUT BAR + VOICE RECORDER INSIDE BOTTOM CONTAINER ---
+# --- REAL STREAMLIT BOTTOM BAR (➕ | TEXT BOX | 🎤 | ➤) ---
 with getattr(st, "bottom", st.container()):
-    if st.session_state.show_voice:
-        with st.container(border=True):
-            v1, v2 = st.columns([6, 1])
-            v1.markdown("🎙️ **બોલો અને પૂરું થાય એટલે ⏹ દબાવો:**")
-            if v2.button("✖", key="close_mic"):
-                st.session_state.show_voice = False
-                st.session_state.focus_input = True
-                st.rerun()
-            audio_val = st.audio_input("રેકોર્ડ", key=f"rec_{st.session_state.audio_counter}", label_visibility="collapsed")
-            if audio_val:
-                with st.spinner("🎧 ગુજરાતીમાં લખાઈ રહ્યું છે..."):
-                    spoken = transcribe_gujarati(audio_val, api_keys)
-                st.session_state.audio_counter += 1
-                st.session_state.show_voice = False
-                if spoken:
-                    existingText = st.session_state.draft_text.strip()
-                    st.session_state.draft_text = f"{existingText} {spoken}".strip() if existingText else spoken
-                    st.session_state.focus_input = True
-                else:
-                    st.warning("⚠️ અવાજ સ્પષ્ટ સંભળાયો નથી, ફરીથી પ્રયત્ન કરો.")
-                st.rerun()
-
     col_plus, col_in, col_mic, col_send = st.columns([1, 8, 1, 1], vertical_alignment="center")
     with col_plus:
         with st.popover("➕"):
-            st.file_uploader("📁 ગેલેરી / PDF", key="bottom_uploader")
-            st.camera_input("📸 કેમેરા", key="bottom_camera")
+            st.file_uploader("📁 ગેલેરી / PDF પસંદ કરો", key="bottom_uploader")
+            st.camera_input("📸 કેમેરાથી ફોટો પાડો", key="bottom_camera")
     with col_in:
-        user_text = st.text_input("પ્રશ્ન...", key="draft_text", placeholder="પ્રશ્ન લખો અથવા 🎤 દબાવો...", label_visibility="collapsed")
+        user_text = st.text_input("પ્રશ્ન...", key="draft_text", placeholder="પ્રશ્ન લખો અથવા 🎤 બોલો...", label_visibility="collapsed")
     with col_mic:
-        if st.button("🎤", help="બોલીને લખો"):
-            st.session_state.show_voice = not st.session_state.show_voice
-            st.rerun()
+        st.button("🎤", key="real_mic_btn", help="બોલીને લખો")
     with col_send:
-        send_clicked = st.button("➤", type="primary", help="મોકલો")
+        send_clicked = st.button("➤", type="primary", key="real_send_btn", help="મોકલો")
 
-# --- AUTO-FOCUS & CURSOR TO END AFTER SPEAKING ---
-if st.session_state.focus_input:
-    st.session_state.focus_input = False
-    components.html("""
-    <script>
-    setTimeout(function() {
-        const doc = window.parent.document;
-        const inputField = doc.querySelector('[data-testid="stBottom"] input[type="text"]');
-        if (inputField) {
-            inputField.focus();
-            const len = inputField.value.length;
-            inputField.setSelectionRange(len, len);
+# --- ATTACH LIVE BROWSER SPEECH RECOGNITION DIRECTLY TO REAL STREAMLIT MIC BUTTON ---
+components.html("""
+<script>
+(function() {
+    const doc = window.parent.document;
+    const SR = window.parent.SpeechRecognition || window.parent.webkitSpeechRecognition;
+
+    function setupVoice() {
+        const bottom = doc.querySelector('[data-testid="stBottom"]');
+        if (!bottom) return;
+        const secBtns = bottom.querySelectorAll('button[kind="secondary"]');
+        const micBtn = Array.from(secBtns).find(b => b.innerText.includes('🎤') || b.innerText.includes('⏹'));
+        const inputField = bottom.querySelector('input[type="text"]');
+        if (!micBtn || !inputField || micBtn.dataset.voiceBound) return;
+
+        micBtn.dataset.voiceBound = 'true';
+        let rec = null, listening = false, baseTxt = '';
+
+        if (SR) {
+            rec = new SR();
+            rec.lang = 'gu-IN';
+            rec.continuous = false;
+            rec.interimResults = true;
+
+            rec.onstart = () => {
+                listening = true;
+                micBtn.style.setProperty('background', '#EF4444', 'important');
+                micBtn.innerText = '⏹';
+                baseTxt = inputField.value.trim();
+            };
+            rec.onresult = (ev) => {
+                let t = '';
+                for (let i = ev.resultIndex; i < ev.results.length; i++) t += ev.results[i][0].transcript;
+                const combined = baseTxt ? (baseTxt + ' ' + t) : t;
+                const setter = Object.getOwnPropertyDescriptor(window.parent.HTMLInputElement.prototype, 'value').set;
+                setter.call(inputField, combined);
+                inputField.dispatchEvent(new Event('input', { bubbles: true }));
+            };
+            rec.onend = () => {
+                listening = false;
+                micBtn.style.setProperty('background', '#10B981', 'important');
+                micBtn.innerText = '🎤';
+                inputField.focus();
+                inputField.setSelectionRange(inputField.value.length, inputField.value.length);
+            };
+            rec.onerror = () => {
+                listening = false;
+                micBtn.style.setProperty('background', '#10B981', 'important');
+                micBtn.innerText = '🎤';
+            };
         }
-    }, 150);
-    </script>
-    """, height=0, width=0)
+
+        micBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (!rec) { alert('કૃપા કરીને Google Chrome બ્રાઉઝર વાપરો.'); return; }
+            listening ? rec.stop() : rec.start();
+        }, true);
+    }
+
+    setupVoice();
+    setTimeout(setupVoice, 400);
+})();
+</script>
+""", height=0)
 
 # --- MANUAL SEND ONLY ---
 if send_clicked and (user_text.strip() or attached):
@@ -430,9 +411,9 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "user"
             st.error("⚠️ Secrets માં GEMINI_API_KEY દાખલ કરો.")
         else:
             mode_inst = (
-                f"વિદ્યાર્થીએ કોઈ ધોરણ પસંદ કર્યું નથી. પ્રશ્ન પરથી ધોરણ 3-8 સમજાય તો સીધો જવાબ આપો, નહીંતર ધોરણ અને વિષય પૂછો.\nGCERT અનુક્રમણિકા:\n{ALL_GRADES_REF}"
-                if is_auto else
-                f"ધોરણ: {grade_choice} | વિષય: {sel_subj} | પ્રકરણ: {sel_chap['name'] if sel_chap else 'બધા'}.\nપ્રકરણો: {', '.join(c['name'] for c in chapters)}"
+                "વિદ્યાર્થીના પ્રશ્ન, આગળની વાતચીત કે ફોટો પરથી ધોરણ (3 થી 8) અને વિષય સમજીને તરત જ સરળ ગુજરાતીમાં સંપૂર્ણ જવાબ આપો. "
+                "જો ફક્ત અધૂરો પ્રશ્ન પૂછે (જેમ કે 'પાઠ 2 સમજાવો' જેમાં ધોરણ અને વિષય સ્પષ્ટ ન હોય), તો નમ્રતાથી પૂછો કે કયા ધોરણ (3 થી 8) અને કયા વિષયના પાઠ વિશે જાણવું છે.\n"
+                f"GCERT સત્તાવાર અનુક્રમણિકા:\n{ALL_GRADES_REF}"
             )
             sys_prompt = f"તમે GCERT ધોરણ 3 થી 8 (ગુજરાતી માધ્યમ) ના નિષ્ણાત AI શિક્ષક છો.\n{mode_inst}\nસરળ ગુજરાતીમાં જવાબ આપો. સૂત્રો $...$ માં લખો."
 
