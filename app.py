@@ -121,7 +121,7 @@ ALL_GRADES_REF = "\n".join(
     for g, d in syllabus_data.items() if d.get("subjects")
 )
 
-# --- INSTANT-RENDER MOBILE-SAFE CSS (NO EXTERNAL FONT BLOCKING) ---
+# --- CRISP WHITE TEXT ON DARK BUBBLES (VISIBLE IN BOTH DARK & LIGHT MODE) ---
 st.markdown("""
 <style>
 html, body, [data-testid="stAppViewContainer"], .main {
@@ -152,33 +152,39 @@ html, body, [data-testid="stAppViewContainer"], .main {
     margin-bottom: 10px;
 }
 
-/* CHAT BUBBLES - CRISP VISIBLE TEXT ON MOBILE */
+/* HIGH-CONTRAST CHAT BUBBLES (WORKS ON DARK & LIGHT MOBILE SCREENS) */
 [data-testid="stChatMessage"] {
     border-radius: 14px !important;
-    padding: 0.65rem 0.9rem !important;
-    margin-bottom: 0.5rem !important;
+    padding: 0.75rem 0.95rem !important;
+    margin-bottom: 0.65rem !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2) !important;
 }
 [data-testid="stChatMessage"][data-message-role="user"] {
-    background-color: #DBEAFE !important;
-    border-left: 4px solid #2563EB !important;
+    background-color: #1E3A8A !important;
+    border-left: 5px solid #60A5FA !important;
 }
 [data-testid="stChatMessage"][data-message-role="assistant"] {
-    background-color: #DCFCE7 !important;
-    border-left: 4px solid #16A34A !important;
+    background-color: #1F2937 !important;
+    border-left: 5px solid #34D399 !important;
 }
 [data-testid="stChatMessage"] p,
 [data-testid="stChatMessage"] li,
 [data-testid="stChatMessage"] span,
-[data-testid="stChatMessage"] div {
-    color: #0F172A !important;
-    -webkit-text-fill-color: #0F172A !important;
+[data-testid="stChatMessage"] div,
+[data-testid="stChatMessage"] strong,
+[data-testid="stChatMessage"] em,
+[data-testid="stChatMessage"] h1,
+[data-testid="stChatMessage"] h2,
+[data-testid="stChatMessage"] h3 {
+    color: #FFFFFF !important;
+    -webkit-text-fill-color: #FFFFFF !important;
     opacity: 1 !important;
     visibility: visible !important;
     font-size: 16px !important;
-    line-height: 1.55 !important;
+    line-height: 1.6 !important;
 }
 
-/* BOTTOM INPUT BAR - HIGH CONTRAST ON ALL MOBILE BROWSERS */
+/* BOTTOM INPUT BAR */
 [data-testid="stBottom"] {
     padding: 0.4rem 0.4rem !important;
     background: transparent !important;
