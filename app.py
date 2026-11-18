@@ -60,7 +60,6 @@ def build_pdf_bytes(messages):
     return bytes(pdf.output(dest="S"))
 
 def transcribe_gujarati(audio_file, api_keys):
-    """Works 100% on Mobile Chrome, iOS Safari, and Desktop."""
     if not HAS_GENAI or not api_keys or not audio_file:
         return ""
     audio_bytes = audio_file.getvalue()
@@ -94,7 +93,7 @@ ALL_GRADES_REF = "\n".join(
     for g, d in syllabus_data.items() if d.get("subjects")
 )
 
-# --- CLEAN, ZERO-OVERFLOW CSS ---
+# --- CLEAN CSS (NO VERTICAL TEXT BUG) ---
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Gujarati:wght@400;600;700&display=swap');
@@ -120,7 +119,6 @@ p, h1, h2, h3, input, textarea, button, .stMarkdown, .stChatMessage {
     margin: 0 auto !important;
 }
 
-/* SLIM ROUNDED BLUE HEADER */
 .slim-header {
     background: linear-gradient(90deg, #1E3A8A 0%, #2563EB 50%, #0284C7 100%);
     color: #ffffff;
@@ -231,25 +229,13 @@ p, h1, h2, h3, input, textarea, button, .stMarkdown, .stChatMessage {
 </style>
 """, unsafe_allow_html=True)
 
-# --- SESSION STATE INIT (BEFORE WIDGETS RENDER) ---
+# --- SESSION STATE INIT ---
 defaults = {
     "messages": [], "mcq_questions": None, "mcq_user_answers": {}, "mcq_checked": False,
-    "draft_text": "", "clear_draft": False, "mic_open": False,
-    "audio_counter": 0, "pending_voice_text": ""
+    "draft_text": "", "mic_open": False, "audio_counter": 0, "input_version": 0
 }
 for k, v in defaults.items():
     if k not in st.session_state: st.session_state[k] = v
-
-if st.session_state.clear_draft:
-    st.session_state.draft_text = ""
-    st.session_state.clear_draft = False
-
-# Append transcribed voice text BEFORE input widget renders (Prevents StreamlitWidgetAlreadyInstantiatedError)
-if st.session_state.pending_voice_text:
-    existing = st.session_state.draft_text.strip()
-    new_spoken = st.session_state.pending_voice_text.strip()
-    st.session_state.draft_text = f"{existing} {new_spoken}".strip() if existing else new_spoken
-    st.session_state.pending_voice_text = ""
 
 # --- SIDEBAR ---
 with st.sidebar:
@@ -270,7 +256,7 @@ with st.sidebar:
 
     st.divider()
     if st.button("🗑️ નવી ચેટ", use_container_width=True):
-        st.session_state.update({"messages": [], "mcq_questions": None, "mcq_user_answers": {}, "mcq_checked": False, "clear_draft": True})
+        st.session_state.update({"messages": [], "mcq_questions": None, "mcq_user_answers": {}, "mcq_checked": False, "draft_text": "", "input_version": st.session_state.input_version + 1})
         st.rerun()
 
     u1, u2 = st.columns([1, 2])
@@ -328,6 +314,27 @@ if st.session_state.mcq_questions:
                 st.markdown(f"**પ્રશ્ન {i+1}:** {'✅ સાચો!' if ua == ca else f'❌ ખોટો! સાચો જવાબ: **{ca}. {correct_opt}**'}")
                 if q.get("explanation"): st.caption(f"💡 સમજૂતી: {q['explanation']}")
 
+# --- VOICE RECORDER IN MAIN PAGE (HORIZONTAL, CLEAN, NEVER VERTICAL) ---
+if st.session_state.mic_open:
+    with st.container(border=True):
+        st.markdown("🎙️ **માઈક પર દબાવી ગુજરાતીમાં બોલો, પૂરું થાય એટલે ⏹ દબાવો:**")
+        audio_val = st.audio_input("રેકોર્ડ", key=f"mob_rec_{st.session_state.audio_counter}", label_visibility="collapsed")
+        if st.button("❌ બંધ કરો", key="close_rec_btn"):
+            st.session_state.mic_open = False
+            st.rerun()
+        if audio_val is not None:
+            with st.spinner("🎧 ગુજરાતીમાં લખાઈ રહ્યું છે..."):
+                spoken = transcribe_gujarati(audio_val, api_keys)
+            st.session_state.audio_counter += 1
+            st.session_state.mic_open = False
+            if spoken:
+                existing = st.session_state.draft_text.strip()
+                st.session_state.draft_text = f"{existing} {spoken}".strip() if existing else spoken
+                st.session_state.input_version += 1
+            else:
+                st.warning("⚠️ અવાજ સ્પષ્ટ સંભળાયો નથી, ફરીથી બોલો.")
+            st.rerun()
+
 # --- ATTACHMENT PREVIEW ---
 attached = st.session_state.get("bottom_uploader") or st.session_state.get("bottom_camera")
 if attached:
@@ -341,34 +348,22 @@ if attached:
             st.session_state.pop("bottom_camera", None)
             st.rerun()
 
-# --- BOTTOM BAR + MOBILE-NATIVE VOICE RECORDER ---
+# --- BOTTOM BAR (➕ | EDITABLE TEXT BOX WITH VALUE | 🎤 | ➤) ---
 with getattr(st, "bottom", st.container()):
-    if st.session_state.mic_open:
-        with st.container(border=True):
-            vc1, vc2 = st.columns([6, 1])
-            vc1.markdown("🎙️ **માઈક પર દબાવી ગુજરાતીમાં બોલો, પૂરું થાય એટલે ⏹ દબાવો:**")
-            if vc2.button("✖", key="close_rec_btn"):
-                st.session_state.mic_open = False
-                st.rerun()
-            audio_val = st.audio_input("રેકોર્ડ", key=f"mob_rec_{st.session_state.audio_counter}", label_visibility="collapsed")
-            if audio_val is not None:
-                with st.spinner("🎧 તમારો અવાજ ગુજરાતીમાં લખાઈ રહ્યો છે..."):
-                    spoken = transcribe_gujarati(audio_val, api_keys)
-                st.session_state.audio_counter += 1
-                st.session_state.mic_open = False
-                if spoken:
-                    st.session_state.pending_voice_text = spoken
-                else:
-                    st.warning("⚠️ અવાજ સ્પષ્ટ સંભળાયો નથી, ફરીથી પ્રયત્ન કરો.")
-                st.rerun()
-
     col_plus, col_in, col_mic, col_send = st.columns([1, 8, 1, 1], vertical_alignment="center")
     with col_plus:
         with st.popover("➕"):
             st.file_uploader("📁 ગેલેરી / PDF પસંદ કરો", key="bottom_uploader")
             st.camera_input("📸 કેમેરાથી ફોટો પાડો", key="bottom_camera")
     with col_in:
-        user_text = st.text_input("પ્રશ્ન...", key="draft_text", placeholder="પ્રશ્ન લખો અથવા 🎤 દબાવો...", label_visibility="collapsed")
+        user_text = st.text_input(
+            "પ્રશ્ન...",
+            value=st.session_state.draft_text,
+            key=f"chat_box_{st.session_state.input_version}",
+            placeholder="પ્રશ્ન લખો અથવા 🎤 દબાવો...",
+            label_visibility="collapsed"
+        )
+        st.session_state.draft_text = user_text
     with col_mic:
         if st.button("🎤", key="real_mic_btn", help="બોલીને લખો"):
             st.session_state.mic_open = not st.session_state.mic_open
@@ -379,7 +374,8 @@ with getattr(st, "bottom", st.container()):
 # --- MANUAL SEND ONLY ---
 if send_clicked and (user_text.strip() or attached):
     st.session_state.messages.append({"role": "user", "content": user_text.strip() or "[ફાઈલ સંલગ્ન છે]"})
-    st.session_state.clear_draft = True
+    st.session_state.draft_text = ""
+    st.session_state.input_version += 1
     st.session_state.mic_open = False
     st.rerun()
 
