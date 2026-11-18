@@ -60,7 +60,6 @@ def build_pdf_bytes(messages):
     return bytes(pdf.output(dest="S"))
 
 def transcribe_gujarati(audio_file, api_keys, preferred_model="gemini-2.5-flash-lite"):
-    """Uses the user's active Gemini model(s) so 404 never happens."""
     if not HAS_GENAI:
         return "", "google-genai library install નથી."
     if not api_keys:
@@ -101,7 +100,7 @@ def transcribe_gujarati(audio_file, api_keys, preferred_model="gemini-2.5-flash-
                 except Exception as e:
                     last_err = str(e)
                     if "404" in last_err or "NOT_FOUND" in last_err:
-                        break  # Try next model immediately
+                        break
                     if "429" in last_err or "RESOURCE_EXHAUSTED" in last_err:
                         break
             if "429" in last_err or "RESOURCE_EXHAUSTED" in last_err:
@@ -122,21 +121,13 @@ ALL_GRADES_REF = "\n".join(
     for g, d in syllabus_data.items() if d.get("subjects")
 )
 
-# --- MOBILE-SAFE HIGH-CONTRAST CSS ---
+# --- INSTANT-RENDER MOBILE-SAFE CSS (NO EXTERNAL FONT BLOCKING) ---
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Gujarati:wght@400;600;700&display=swap');
-
 html, body, [data-testid="stAppViewContainer"], .main {
     max-width: 100vw !important;
     overflow-x: hidden !important;
-    font-family: 'Noto Sans Gujarati', sans-serif !important;
-}
-p, h1, h2, h3, input, textarea, button, .stMarkdown, .stChatMessage {
-    font-family: 'Noto Sans Gujarati', sans-serif !important;
-}
-[data-testid="stIconMaterial"], .material-symbols-rounded, span[translate="no"] {
-    font-family: 'Material Symbols Rounded' !important;
+    font-family: system-ui, -apple-system, 'Noto Sans Gujarati', 'Shruti', sans-serif !important;
 }
 
 .block-container {
@@ -150,7 +141,8 @@ p, h1, h2, h3, input, textarea, button, .stMarkdown, .stChatMessage {
 
 .slim-header {
     background: linear-gradient(90deg, #1E3A8A 0%, #2563EB 50%, #0284C7 100%);
-    color: #ffffff;
+    color: #FFFFFF !important;
+    -webkit-text-fill-color: #FFFFFF !important;
     padding: 9px 16px;
     border-radius: 50px;
     text-align: center;
@@ -160,27 +152,35 @@ p, h1, h2, h3, input, textarea, button, .stMarkdown, .stChatMessage {
     margin-bottom: 10px;
 }
 
-.stChatMessage[data-message-role="user"] {
-    background: #EFF6FF !important;
-    border-left: 4px solid #3B82F6 !important;
+/* CHAT BUBBLES - CRISP VISIBLE TEXT ON MOBILE */
+[data-testid="stChatMessage"] {
     border-radius: 14px !important;
-    padding: 0.6rem 0.9rem !important;
-    color: #111827 !important;
+    padding: 0.65rem 0.9rem !important;
+    margin-bottom: 0.5rem !important;
 }
-.stChatMessage[data-message-role="assistant"] {
-    background: #F0FDF4 !important;
-    border-left: 4px solid #10B981 !important;
-    border-radius: 14px !important;
-    padding: 0.6rem 0.9rem !important;
-    color: #111827 !important;
+[data-testid="stChatMessage"][data-message-role="user"] {
+    background-color: #DBEAFE !important;
+    border-left: 4px solid #2563EB !important;
 }
-.stChatMessage p, .stChatMessage li, .stChatMessage span {
-    color: #111827 !important;
+[data-testid="stChatMessage"][data-message-role="assistant"] {
+    background-color: #DCFCE7 !important;
+    border-left: 4px solid #16A34A !important;
+}
+[data-testid="stChatMessage"] p,
+[data-testid="stChatMessage"] li,
+[data-testid="stChatMessage"] span,
+[data-testid="stChatMessage"] div {
+    color: #0F172A !important;
+    -webkit-text-fill-color: #0F172A !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    font-size: 16px !important;
+    line-height: 1.55 !important;
 }
 
-/* BOTTOM BAR STYLING - IMMUNE TO MOBILE DARK MODE INVERSION */
+/* BOTTOM INPUT BAR - HIGH CONTRAST ON ALL MOBILE BROWSERS */
 [data-testid="stBottom"] {
-    padding: 0.4rem 0.5rem !important;
+    padding: 0.4rem 0.4rem !important;
     background: transparent !important;
     z-index: 99999 !important;
 }
@@ -194,11 +194,11 @@ p, h1, h2, h3, input, textarea, button, .stMarkdown, .stChatMessage {
     grid-template-columns: 38px minmax(0, 1fr) 38px 38px !important;
     align-items: center !important;
     gap: 6px !important;
-    background: #1f2937 !important;
-    border: 1px solid #374151 !important;
+    background-color: #1E293B !important;
+    border: 1px solid #475569 !important;
     border-radius: 999px !important;
     padding: 5px 7px !important;
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3) !important;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35) !important;
     width: 100% !important;
     box-sizing: border-box !important;
 }
@@ -211,27 +211,29 @@ p, h1, h2, h3, input, textarea, button, .stMarkdown, .stChatMessage {
 }
 [data-testid="stBottom"] div[data-baseweb="input"],
 [data-testid="stBottom"] div[data-baseweb="base-input"] {
-    background-color: #111827 !important;
+    background-color: #0F172A !important;
     border-radius: 999px !important;
-    border: 1px solid #4B5563 !important;
-    color-scheme: dark !important;
+    border: 1px solid #64748B !important;
+    min-height: 40px !important;
 }
+[data-testid="stBottom"] input,
 [data-testid="stBottom"] input[type="text"] {
-    background-color: #111827 !important;
+    background-color: #0F172A !important;
     color: #FFFFFF !important;
     -webkit-text-fill-color: #FFFFFF !important;
     caret-color: #FFFFFF !important;
-    color-scheme: dark !important;
     border-radius: 999px !important;
     border: none !important;
-    padding: 7px 12px !important;
+    padding: 8px 12px !important;
     font-size: 16px !important;
-    font-weight: 500 !important;
+    line-height: 1.4 !important;
+    height: 40px !important;
     opacity: 1 !important;
+    visibility: visible !important;
 }
-[data-testid="stBottom"] input[type="text"]::placeholder {
-    color: #9CA3AF !important;
-    -webkit-text-fill-color: #9CA3AF !important;
+[data-testid="stBottom"] input::placeholder {
+    color: #CBD5E1 !important;
+    -webkit-text-fill-color: #CBD5E1 !important;
     opacity: 1 !important;
 }
 [data-testid="stBottom"] [data-testid="InputInstructions"],
@@ -245,27 +247,28 @@ p, h1, h2, h3, input, textarea, button, .stMarkdown, .stChatMessage {
     min-height: 38px !important;
     padding: 0 !important;
     border: none !important;
-    color: #ffffff !important;
-    -webkit-text-fill-color: #ffffff !important;
+    color: #FFFFFF !important;
+    -webkit-text-fill-color: #FFFFFF !important;
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
+    opacity: 1 !important;
 }
 [data-testid="stBottom"] [data-testid="stPopover"] > button {
-    background: #374151 !important;
-    font-size: 16px !important;
+    background-color: #334155 !important;
+    font-size: 17px !important;
 }
 [data-testid="stBottom"] button[kind="secondary"] {
-    background: #10B981 !important;
-    font-size: 16px !important;
+    background-color: #10B981 !important;
+    font-size: 17px !important;
 }
 [data-testid="stBottom"] button[kind="primary"] {
-    background: #2563EB !important;
-    font-size: 15px !important;
+    background-color: #2563EB !important;
+    font-size: 16px !important;
 }
 
 @media (max-width: 600px) {
-    .slim-header { font-size: 0.9rem; padding: 7px 10px; }
+    .slim-header { font-size: 0.92rem; padding: 7px 10px; }
 }
 </style>
 """, unsafe_allow_html=True)
