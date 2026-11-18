@@ -59,8 +59,8 @@ def build_pdf_bytes(messages):
         pdf.ln(2)
     return bytes(pdf.output(dest="S"))
 
-def transcribe_gujarati(audio_file, api_keys):
-    """Returns (transcribed_text, error_message)."""
+def transcribe_gujarati(audio_file, api_keys, preferred_model="gemini-2.5-flash-lite"):
+    """Uses the user's active Gemini model(s) so 404 never happens."""
     if not HAS_GENAI:
         return "", "google-genai library install નથી."
     if not api_keys:
@@ -74,7 +74,12 @@ def transcribe_gujarati(audio_file, api_keys):
 
     detected_mime = getattr(audio_file, "type", None) or "audio/wav"
     mime_candidates = list(dict.fromkeys([detected_mime, "audio/wav", "audio/webm", "audio/mp4"]))
-    model_candidates = ["gemini-2.5-flash", "gemini-2.5-flash-lite"]
+    model_candidates = list(dict.fromkeys([
+        preferred_model,
+        "gemini-2.5-flash-lite",
+        "gemini-3.5-flash-lite",
+        "gemini-2.5-flash"
+    ]))
 
     prompt = (
         "Listen to this audio carefully and transcribe ONLY the exact spoken words in Gujarati script (ગુજરાતી લિપિ). "
@@ -95,6 +100,8 @@ def transcribe_gujarati(audio_file, api_keys):
                         return resp.text.strip(), ""
                 except Exception as e:
                     last_err = str(e)
+                    if "404" in last_err or "NOT_FOUND" in last_err:
+                        break  # Try next model immediately
                     if "429" in last_err or "RESOURCE_EXHAUSTED" in last_err:
                         break
             if "429" in last_err or "RESOURCE_EXHAUSTED" in last_err:
@@ -368,7 +375,7 @@ if st.session_state.mic_open:
             st.rerun()
         if audio_val is not None:
             with st.spinner("🎧 ગુજરાતીમાં લખાઈ રહ્યું છે..."):
-                spoken, err = transcribe_gujarati(audio_val, api_keys)
+                spoken, err = transcribe_gujarati(audio_val, api_keys, preferred_model=model_choice)
             st.session_state.audio_counter += 1
             st.session_state.mic_open = False
             if spoken:
