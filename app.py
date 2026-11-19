@@ -115,19 +115,133 @@ def load_syllabus():
             return json.load(f)
     return {}
 
+
+_GUJ_DIGIT_MAP = str.maketrans("૦૧૨૩૪૫૬૭૮૯", "0123456789")
+
+_SUBJECT_DETECT = {
+    "social_science": ["સામાજિક", "સમાજિક", "social", "samajik", "samaj"],
+    "math": ["ગણિત", "ગણીત", "math", "maths", "ganit"],
+    "science": ["વિજ્ઞાન", "science", "vigyan", "vignan"],
+    "environment": ["પર્યાવરણ", "આસપાસ", "environment", "paryavaran", "aaspas", "aaspaas", "evs"],
+    "gujarati": ["ગુજરાતી", "gujarati", "કલશોર", "kalshor", "કેકારવ", "kekarav", "કહુ", "kuhu", "પલાશ", "palash"],
+    "english": ["અંગ્રેજી", "english"],
+    "hindi": ["હિન્દી", "hindi", "हिन्दी", "titali", "તિતલી"],
+    "sanskrit": ["સંસ્કૃત", "sanskrit"],
+}
+
+
+def _detect_grade(text):
+    t = (text or "").translate(_GUJ_DIGIT_MAP).lower()
+    patterns = [
+        r"ધોરણ\s*([3-8])",
+        r"std\.?\s*([3-8])",
+        r"dhoran\s*([3-8])",
+        r"grade\s*([3-8])",
+        r"class\s*([3-8])",
+    ]
+    for p in patterns:
+        m = re.search(p, t)
+        if m:
+            try:
+                g = int(m.group(1))
+                if 3 <= g <= 8:
+                    return g
+            except Exception:
+                pass
+    return None
+
+
+def _detect_subject_code(text):
+    t = (text or "").lower()
+    for code in ("social_science", "math", "science", "environment", "gujarati", "english", "hindi", "sanskrit"):
+        for kw in _SUBJECT_DETECT[code]:
+            if kw.lower() in t:
+                return code
+    return None
+
+
+def find_matching_local_pdfs(query_text, history_text, syllabus):
+    combined_query = query_text or ""
+    combined_history = history_text or ""
+    grade = _detect_grade(combined_query) or _detect_grade(combined_history)
+    subject_code = _detect_subject_code(combined_query) or _detect_subject_code(combined_history)
+    if not grade or not subject_code or not syllabus:
+        return []
+
+    grade_key = f"ધોરણ {grade}"
+    subjects = (syllabus.get(grade_key) or {}).get("subjects", {})
+    matched = []
+    for _name, info in subjects.items():
+        if info.get("code") != subject_code:
+            continue
+        for p in info.get("local_pdfs") or []:
+            if not isinstance(p, str):
+                continue
+            path = p.replace("\\", "/")
+            if not os.path.exists(path):
+                continue
+            try:
+                if os.path.getsize(path) >= 19 * 1024 * 1024:
+                    continue
+            except Exception:
+                continue
+            if path not in matched:
+                matched.append(path)
+        break
+    return matched[:2]
+
 syllabus_data = load_syllabus()
 ALL_GRADES_REF = "\n".join(
     f"[{g}] " + " | ".join(f"{s}: {', '.join(c['name'] for c in info.get('chapters', []))}" for s, info in d.get("subjects", {}).items())
     for g, d in syllabus_data.items() if d.get("subjects")
 )
 
-# --- CRISP WHITE TEXT ON DARK BUBBLES (VISIBLE IN BOTH DARK & LIGHT MODE) ---
+# --- THEME-SAFE, HIGH-CONTRAST STYLING (LIGHT / DARK / SYSTEM) ---
 st.markdown("""
 <style>
-html, body, [data-testid="stAppViewContainer"], .main {
+:root {
+    --app-bg: #F4F7FB;
+    --app-text: #0F172A;
+    --app-muted: #334155;
+    --surface: #FFFFFF;
+    --surface-border: #CBD5E1;
+    --sidebar-bg: #FFFFFF;
+    --sidebar-text: #0F172A;
+    --input-bg: #FFFFFF;
+    --input-text: #0F172A;
+    --input-border: #94A3B8;
+    --placeholder: #64748B;
+    --accent: #2563EB;
+    --accent-2: #1E3A8A;
+    --success: #059669;
+    --danger: #DC2626;
+    --warn-bg: #FEF3C7;
+    --warn-text: #92400E;
+    --info-bg: #DBEAFE;
+    --info-text: #1E3A8A;
+    --ok-bg: #D1FAE5;
+    --ok-text: #065F46;
+    --err-bg: #FEE2E2;
+    --err-text: #991B1B;
+    --bubble-user: #1E3A8A;
+    --bubble-assistant: #111827;
+    --bubble-text: #FFFFFF;
+    --bottom-bar: #1E293B;
+    --bottom-bar-border: #475569;
+    --bottom-input: #0F172A;
+    --bottom-input-border: #64748B;
+}
+
+html, body, [data-testid="stAppViewContainer"], .stApp, .main {
     max-width: 100vw !important;
     overflow-x: hidden !important;
     font-family: system-ui, -apple-system, 'Noto Sans Gujarati', 'Shruti', sans-serif !important;
+    background-color: var(--app-bg) !important;
+    color: var(--app-text) !important;
+}
+
+[data-testid="stHeader"] {
+    background: transparent !important;
 }
 
 .block-container {
@@ -137,6 +251,7 @@ html, body, [data-testid="stAppViewContainer"], .main {
     padding-right: 0.75rem !important;
     max-width: 820px !important;
     margin: 0 auto !important;
+    color: var(--app-text) !important;
 }
 
 .slim-header {
@@ -152,39 +267,155 @@ html, body, [data-testid="stAppViewContainer"], .main {
     margin-bottom: 10px;
 }
 
-/* HIGH-CONTRAST CHAT BUBBLES (WORKS ON DARK & LIGHT MOBILE SCREENS) */
+/* Main content text */
+.main p, .main li, .main span, .main label, .main h1, .main h2, .main h3, .main h4, .main h5, .main h6,
+.block-container p, .block-container li, .block-container span, .block-container label,
+[data-testid="stMarkdownContainer"], [data-testid="stMarkdownContainer"] p, [data-testid="stMarkdownContainer"] li,
+[data-testid="stMarkdownContainer"] span, [data-testid="stMarkdownContainer"] div,
+[data-testid="stCaptionContainer"], [data-testid="stCaptionContainer"] * {
+    color: var(--app-text) !important;
+    -webkit-text-fill-color: var(--app-text) !important;
+    opacity: 1 !important;
+}
+[data-testid="stCaptionContainer"], [data-testid="stCaptionContainer"] * {
+    color: var(--app-muted) !important;
+    -webkit-text-fill-color: var(--app-muted) !important;
+}
+
+/* Sidebar */
+section[data-testid="stSidebar"], [data-testid="stSidebar"] > div {
+    background-color: var(--sidebar-bg) !important;
+    color: var(--sidebar-text) !important;
+    border-right: 1px solid var(--surface-border) !important;
+}
+section[data-testid="stSidebar"] p, section[data-testid="stSidebar"] span, section[data-testid="stSidebar"] label,
+section[data-testid="stSidebar"] div, section[data-testid="stSidebar"] h1, section[data-testid="stSidebar"] h2,
+section[data-testid="stSidebar"] h3, section[data-testid="stSidebar"] li,
+section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"],
+section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] * {
+    color: var(--sidebar-text) !important;
+    -webkit-text-fill-color: var(--sidebar-text) !important;
+    opacity: 1 !important;
+}
+
+/* General inputs & selectboxes (sidebar/main) */
+div[data-baseweb="select"] > div,
+div[data-baseweb="input"] > div,
+div[data-baseweb="base-input"],
+[data-testid="stTextInput"] input,
+[data-testid="stSelectbox"] div[data-baseweb="select"] > div {
+    background-color: var(--input-bg) !important;
+    color: var(--input-text) !important;
+    -webkit-text-fill-color: var(--input-text) !important;
+    border-color: var(--input-border) !important;
+}
+div[data-baseweb="select"] *, div[data-baseweb="popover"] *, div[data-baseweb="menu"] * {
+    color: var(--input-text) !important;
+    -webkit-text-fill-color: var(--input-text) !important;
+}
+div[data-baseweb="popover"], div[data-baseweb="menu"], ul[role="listbox"] {
+    background-color: var(--input-bg) !important;
+    color: var(--input-text) !important;
+    border: 1px solid var(--surface-border) !important;
+}
+li[role="option"] { color: var(--input-text) !important; }
+
+/* Buttons (general) */
+.stButton > button, [data-testid="stDownloadButton"] > button {
+    background-color: var(--surface) !important;
+    color: var(--app-text) !important;
+    -webkit-text-fill-color: var(--app-text) !important;
+    border: 1px solid var(--surface-border) !important;
+    border-radius: 10px !important;
+    font-weight: 600 !important;
+    opacity: 1 !important;
+}
+.stButton > button:hover, [data-testid="stDownloadButton"] > button:hover {
+    border-color: var(--accent) !important;
+    color: var(--accent) !important;
+    -webkit-text-fill-color: var(--accent) !important;
+}
+.stButton > button[kind="primary"], button[kind="primary"] {
+    background-color: var(--accent) !important;
+    color: #FFFFFF !important;
+    -webkit-text-fill-color: #FFFFFF !important;
+    border: none !important;
+}
+
+/* Radio buttons */
+[data-testid="stRadio"] label, [data-testid="stRadio"] p, [data-testid="stRadio"] span, [data-testid="stRadio"] div {
+    color: var(--app-text) !important;
+    -webkit-text-fill-color: var(--app-text) !important;
+    opacity: 1 !important;
+}
+
+/* Alerts */
+[data-testid="stAlert"] {
+    border-radius: 10px !important;
+    border: 1px solid var(--surface-border) !important;
+}
+[data-testid="stAlert"] p, [data-testid="stAlert"] span, [data-testid="stAlert"] div, [data-testid="stAlert"] li,
+[data-testid="stAlert"] [data-testid="stMarkdownContainer"], [data-testid="stAlert"] [data-testid="stMarkdownContainer"] * {
+    opacity: 1 !important;
+}
+div[data-baseweb="notification"][kind="positive"], [data-testid="stAlert"][data-baseweb="notification"] {
+    color: inherit !important;
+}
+.stAlert [data-testid="stMarkdownContainer"] * { color: inherit !important; -webkit-text-fill-color: inherit !important; }
+
+/* Chat bubbles (high contrast on all themes) */
 [data-testid="stChatMessage"] {
     border-radius: 14px !important;
     padding: 0.75rem 0.95rem !important;
     margin-bottom: 0.65rem !important;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2) !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18) !important;
+    border: 1px solid rgba(255,255,255,0.08) !important;
+    color: var(--bubble-text) !important;
 }
-[data-testid="stChatMessage"][data-message-role="user"] {
-    background-color: #1E3A8A !important;
+[data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-user"]),
+[data-testid="stChatMessage"][aria-label*="user" i] {
+    background-color: var(--bubble-user) !important;
     border-left: 5px solid #60A5FA !important;
 }
-[data-testid="stChatMessage"][data-message-role="assistant"] {
-    background-color: #1F2937 !important;
+[data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]),
+[data-testid="stChatMessage"][aria-label*="assistant" i] {
+    background-color: var(--bubble-assistant) !important;
     border-left: 5px solid #34D399 !important;
 }
+/* fallback: default assistant look */
+[data-testid="stChatMessage"] {
+    background-color: var(--bubble-assistant);
+}
+
 [data-testid="stChatMessage"] p,
 [data-testid="stChatMessage"] li,
 [data-testid="stChatMessage"] span,
 [data-testid="stChatMessage"] div,
 [data-testid="stChatMessage"] strong,
 [data-testid="stChatMessage"] em,
+[data-testid="stChatMessage"] code,
+[data-testid="stChatMessage"] pre,
+[data-testid="stChatMessage"] a,
 [data-testid="stChatMessage"] h1,
 [data-testid="stChatMessage"] h2,
-[data-testid="stChatMessage"] h3 {
-    color: #FFFFFF !important;
-    -webkit-text-fill-color: #FFFFFF !important;
+[data-testid="stChatMessage"] h3,
+[data-testid="stChatMessage"] h4,
+[data-testid="stChatMessage"] h5,
+[data-testid="stChatMessage"] h6,
+[data-testid="stChatMessage"] [data-testid="stMarkdownContainer"],
+[data-testid="stChatMessage"] [data-testid="stMarkdownContainer"] * {
+    color: var(--bubble-text) !important;
+    -webkit-text-fill-color: var(--bubble-text) !important;
     opacity: 1 !important;
     visibility: visible !important;
-    font-size: 16px !important;
-    line-height: 1.6 !important;
+}
+[data-testid="stChatMessage"] p, [data-testid="stChatMessage"] li { font-size: 16px !important; line-height: 1.6 !important; }
+[data-testid="stChatMessage"] code, [data-testid="stChatMessage"] pre {
+    background: rgba(255,255,255,0.12) !important;
+    border-radius: 6px !important;
 }
 
-/* BOTTOM INPUT BAR */
+/* Bottom input bar */
 [data-testid="stBottom"] {
     padding: 0.4rem 0.4rem !important;
     background: transparent !important;
@@ -200,31 +431,27 @@ html, body, [data-testid="stAppViewContainer"], .main {
     grid-template-columns: 38px minmax(0, 1fr) 38px 38px !important;
     align-items: center !important;
     gap: 6px !important;
-    background-color: #1E293B !important;
-    border: 1px solid #475569 !important;
+    background-color: var(--bottom-bar) !important;
+    border: 1px solid var(--bottom-bar-border) !important;
     border-radius: 999px !important;
     padding: 5px 7px !important;
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35) !important;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25) !important;
     width: 100% !important;
     box-sizing: border-box !important;
 }
 [data-testid="stBottom"] [data-testid="stColumn"] {
-    width: 100% !important;
-    min-width: 0 !important;
-    max-width: 100% !important;
-    padding: 0 !important;
-    margin: 0 !important;
+    width: 100% !important; min-width: 0 !important; max-width: 100% !important; padding: 0 !important; margin: 0 !important;
 }
 [data-testid="stBottom"] div[data-baseweb="input"],
 [data-testid="stBottom"] div[data-baseweb="base-input"] {
-    background-color: #0F172A !important;
+    background-color: var(--bottom-input) !important;
     border-radius: 999px !important;
-    border: 1px solid #64748B !important;
+    border: 1px solid var(--bottom-input-border) !important;
     min-height: 40px !important;
 }
 [data-testid="stBottom"] input,
 [data-testid="stBottom"] input[type="text"] {
-    background-color: #0F172A !important;
+    background-color: var(--bottom-input) !important;
     color: #FFFFFF !important;
     -webkit-text-fill-color: #FFFFFF !important;
     caret-color: #FFFFFF !important;
@@ -242,35 +469,83 @@ html, body, [data-testid="stAppViewContainer"], .main {
     -webkit-text-fill-color: #CBD5E1 !important;
     opacity: 1 !important;
 }
-[data-testid="stBottom"] [data-testid="InputInstructions"],
-[data-testid="stBottom"] [data-testid="stPopover"] svg {
-    display: none !important;
-}
+[data-testid="stBottom"] [data-testid="InputInstructions"] { display: none !important; }
 [data-testid="stBottom"] button {
     border-radius: 50% !important;
-    width: 38px !important;
-    height: 38px !important;
-    min-height: 38px !important;
-    padding: 0 !important;
-    border: none !important;
-    color: #FFFFFF !important;
-    -webkit-text-fill-color: #FFFFFF !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
+    width: 38px !important; height: 38px !important; min-height: 38px !important;
+    padding: 0 !important; border: none !important;
+    color: #FFFFFF !important; -webkit-text-fill-color: #FFFFFF !important;
+    display: flex !important; align-items: center !important; justify-content: center !important;
     opacity: 1 !important;
 }
 [data-testid="stBottom"] [data-testid="stPopover"] > button {
     background-color: #334155 !important;
     font-size: 17px !important;
 }
-[data-testid="stBottom"] button[kind="secondary"] {
-    background-color: #10B981 !important;
-    font-size: 17px !important;
+[data-testid="stBottom"] button[kind="secondary"] { background-color: #10B981 !important; font-size: 17px !important; }
+[data-testid="stBottom"] button[kind="primary"] { background-color: #2563EB !important; font-size: 16px !important; }
+
+/* Popover menu (attachment) */
+[data-testid="stPopoverBody"], [data-baseweb="popover"] [data-testid="stVerticalBlock"] {
+    background-color: var(--surface) !important;
+    color: var(--app-text) !important;
 }
-[data-testid="stBottom"] button[kind="primary"] {
-    background-color: #2563EB !important;
-    font-size: 16px !important;
+[data-testid="stPopoverBody"] p, [data-testid="stPopoverBody"] span, [data-testid="stPopoverBody"] label,
+[data-testid="stPopoverBody"] div, [data-testid="stPopoverBody"] small,
+[data-testid="stPopoverBody"] [data-testid="stMarkdownContainer"] * {
+    color: var(--app-text) !important;
+    -webkit-text-fill-color: var(--app-text) !important;
+    opacity: 1 !important;
+}
+
+/* File uploader / camera labels */
+[data-testid="stFileUploader"] label, [data-testid="stFileUploader"] span, [data-testid="stFileUploader"] div,
+[data-testid="stCameraInput"] label, [data-testid="stCameraInput"] span, [data-testid="stCameraInput"] div {
+    color: var(--app-text) !important;
+    -webkit-text-fill-color: var(--app-text) !important;
+}
+
+/* Dark theme overrides */
+@media (prefers-color-scheme: dark) {
+    :root {
+        --app-bg: #0B1220;
+        --app-text: #E5E7EB;
+        --app-muted: #CBD5E1;
+        --surface: #111827;
+        --surface-border: #334155;
+        --sidebar-bg: #0F172A;
+        --sidebar-text: #E5E7EB;
+        --input-bg: #111827;
+        --input-text: #E5E7EB;
+        --input-border: #475569;
+        --placeholder: #94A3B8;
+    }
+}
+[data-theme="dark"] {
+    --app-bg: #0B1220;
+    --app-text: #E5E7EB;
+    --app-muted: #CBD5E1;
+    --surface: #111827;
+    --surface-border: #334155;
+    --sidebar-bg: #0F172A;
+    --sidebar-text: #E5E7EB;
+    --input-bg: #111827;
+    --input-text: #E5E7EB;
+    --input-border: #475569;
+    --placeholder: #94A3B8;
+}
+.stApp[data-theme="dark"], [data-testid="stAppViewContainer"][data-theme="dark"] {
+    --app-bg: #0B1220;
+    --app-text: #E5E7EB;
+    --app-muted: #CBD5E1;
+    --surface: #111827;
+    --surface-border: #334155;
+    --sidebar-bg: #0F172A;
+    --sidebar-text: #E5E7EB;
+    --input-bg: #111827;
+    --input-text: #E5E7EB;
+    --input-border: #475569;
+    --placeholder: #94A3B8;
 }
 
 @media (max-width: 600px) {
@@ -449,14 +724,30 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "user"
         if not HAS_GENAI or not api_keys:
             st.error("⚠️ Secrets માં GEMINI_API_KEY દાખલ કરો.")
         else:
+            hist = "\n".join(f"{'વિદ્યાર્થી' if m['role']=='user' else 'શિક્ષક'}: {m['content']}" for m in st.session_state.messages[:-1][-6:])
+            local_pdf_paths = find_matching_local_pdfs(clean_q, hist, syllabus_data)
+
+            textbook_inst = ""
+            if local_pdf_paths:
+                textbook_inst = (
+                    "જો સંલગ્ન લોકલ પાઠ્યપુસ્તક PDF ઉપલબ્ધ હોય, તો તેના પાઠ, કવિતાઓ, સ્વાધ્યાય અને સમાવિષ્ટ સામગ્રીનો કડકાઈથી ઉપયોગ કરીને જ સચોટ જવાબ આપો. "
+                    "બાહ્ય અનુમાનને બદલે PDFની માહિતીને પ્રાથમિકતા આપો.\n"
+                )
             mode_inst = (
                 "વિદ્યાર્થીના પ્રશ્ન, આગળની વાતચીત કે ફોટો પરથી ધોરણ (3 થી 8) અને વિષય સમજીને તરત જ સરળ ગુજરાતીમાં સંપૂર્ણ જવાબ આપો. "
                 "જો ફક્ત અધૂરો પ્રશ્ન પૂછે (જેમ કે 'પાઠ 2 સમજાવો' જેમાં ધોરણ અને વિષય સ્પષ્ટ ન હોય), તો નમ્રતાથી પૂછો કે કયા ધોરણ (3 થી 8) અને કયા વિષયના પાઠ વિશે જાણવું છે.\n"
+                f"{textbook_inst}"
                 f"GCERT સત્તાવાર અનુક્રમણિકા:\n{ALL_GRADES_REF}"
             )
             sys_prompt = f"તમે GCERT ધોરણ 3 થી 8 (ગુજરાતી માધ્યમ) ના નિષ્ણાત AI શિક્ષક છો.\n{mode_inst}\nસરળ ગુજરાતીમાં જવાબ આપો. સૂત્રો $...$ માં લખો."
 
             contents = []
+            for pdf_path in local_pdf_paths:
+                try:
+                    with open(pdf_path, "rb") as pf:
+                        contents.append(types.Part.from_bytes(data=pf.read(), mime_type="application/pdf"))
+                except Exception:
+                    pass
             att = st.session_state.get("bottom_uploader") or st.session_state.get("bottom_camera")
             if att:
                 fb = att.getvalue()
@@ -467,7 +758,6 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "user"
             st.session_state.pop("bottom_uploader", None)
             st.session_state.pop("bottom_camera", None)
 
-            hist = "\n".join(f"{'વિદ્યાર્થી' if m['role']=='user' else 'શિક્ષક'}: {m['content']}" for m in st.session_state.messages[:-1][-6:])
             contents.append(f"{sys_prompt}\n\n{hist}\nવિદ્યાર્થીનો પ્રશ્ન: {clean_q}")
 
             models = [model_choice] + [m for m in ["gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-3.5-flash-lite"] if m != model_choice]
