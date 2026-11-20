@@ -1,6 +1,6 @@
-streamlit>=1.42.0
+streamlit
 google-genai
 pillow
-requests
 fpdf2
-uharfbuzz
+pymupdf
+pypdf
