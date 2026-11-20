@@ -18,6 +18,34 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
+# Current 2026 active Gemini models + automatic discovery fallback
+ACTIVE_MODELS = [
+    "gemini-3.5-flash",
+    "gemini-3.5-flash-lite",
+    "gemini-3-flash-preview",
+    "gemini-2.5-flash-lite",
+]
+
+def get_available_models_for_client(client, preferred_model):
+    candidates = list(dict.fromkeys([preferred_model] + ACTIVE_MODELS))
+    try:
+        discovered = []
+        for m in client.models.list():
+            name = (getattr(m, "name", "") or "").replace("models/", "")
+            methods = getattr(m, "supported_generation_methods", None) or getattr(m, "supported_actions", None) or []
+            if "gemini" in name.lower() and not any(x in name.lower() for x in ("embedding", "imagen", "veo", "aqa", "tts", "audio", "robotics")):
+                if not methods or "generateContent" in methods:
+                    discovered.append(name)
+        # Prefer flash models first so responses are fast
+        flash_models = [n for n in discovered if "flash" in n.lower()]
+        other_models = [n for n in discovered if "flash" not in n.lower()]
+        for n in flash_models + other_models:
+            if n not in candidates:
+                candidates.append(n)
+    except Exception:
+        pass
+    return candidates
+
 # --- PDF & MCQ HELPERS ---
 def parse_mcq(text):
     questions = []
@@ -76,7 +104,17 @@ def build_pdf_bytes(messages):
         pdf.ln(2)
     return bytes(pdf.output(dest="S"))
 
-def transcribe_gujarati(audio_file, api_keys, preferred_model="gemini-2.5-flash-lite", lang_name="ગુજરાતી"):
+def format_friendly_error(err_str):
+    e = str(err_str)
+    if "429" in e or "RESOURCE_EXHAUSTED" in e:
+        return "API Key નો આજનો ફ્રી ક્વોટા (Limit) પૂરો થઈ ગયો છે. નવી API Key ઉમેરો અથવા થોડીવાર પછી ફરી પ્રયાસ કરો."
+    if "400" in e and ("API_KEY_INVALID" in e or "API key not valid" in e):
+        return "તમારી GEMINI_API_KEY ખોટી છે. Secrets માં સાચી API Key તપાસો."
+    if "403" in e:
+        return "API Key પર પરમિશન નથી અથવા બ્લોક થઈ છે."
+    return f"કનેક્શન સમસ્યા આવી છે: {e[:160]}"
+
+def transcribe_gujarati(audio_file, api_keys, preferred_model="gemini-3.5-flash", lang_name="ગુજરાતી"):
     if not HAS_GENAI or not api_keys or not audio_file:
         return "", "API Key અથવા ઓડિયો ઉપલબ્ધ નથી."
 
@@ -86,8 +124,6 @@ def transcribe_gujarati(audio_file, api_keys, preferred_model="gemini-2.5-flash-
 
     detected_mime = getattr(audio_file, "type", None) or "audio/wav"
     mime_candidates = list(dict.fromkeys([detected_mime, "audio/wav", "audio/webm", "audio/mp4", "audio/ogg"]))
-    # Use active valid models (never deprecated gemini-2.5-flash)
-    model_candidates = list(dict.fromkeys([preferred_model, "gemini-2.5-flash-lite", "gemini-3.5-flash-lite", "gemini-3.5-flash"]))
 
     script_hint = {
         "ગુજરાતી": "Gujarati script (ગુજરાતી લિપિ)",
@@ -103,6 +139,7 @@ def transcribe_gujarati(audio_file, api_keys, preferred_model="gemini-2.5-flash-
     last_err = ""
     for key in api_keys:
         client = genai.Client(api_key=key)
+        model_candidates = get_available_models_for_client(client, preferred_model)
         for mod in model_candidates:
             for mime in mime_candidates:
                 try:
@@ -114,14 +151,12 @@ def transcribe_gujarati(audio_file, api_keys, preferred_model="gemini-2.5-flash-
                         return resp.text.strip(), ""
                 except Exception as e:
                     last_err = str(e)
-                    if any(x in last_err for x in ("404", "429", "RESOURCE_EXHAUSTED")):
+                    if any(x in last_err for x in ("404", "429", "RESOURCE_EXHAUSTED", "API_KEY_INVALID")):
                         break
-            if any(x in last_err for x in ("429", "RESOURCE_EXHAUSTED")):
+            if any(x in last_err for x in ("429", "RESOURCE_EXHAUSTED", "API_KEY_INVALID")):
                 break
 
-    if "429" in last_err or "RESOURCE_EXHAUSTED" in last_err:
-        return "", "API ક્વોટા પૂરો થયો છે, થોડીવાર પછી ફરી પ્રયાસ કરો."
-    return "", "અવાજ સ્પષ્ટ સંભળાયો નથી, ફરીથી નજીકથી બોલો."
+    return "", format_friendly_error(last_err)
 
 @st.cache_data
 def load_syllabus():
@@ -496,7 +531,7 @@ def render_message_with_visuals(content):
 
 syllabus_data = load_syllabus()
 
-# --- PREMIUM GEMINI / CHATGPT STYLE UI (NO BLACK BOX, NO GREEN BUTTONS, WIDE MOBILE INPUT) ---
+# --- PREMIUM GEMINI / CHATGPT STYLE UI ---
 st.markdown("""
 <style>
 :root {
@@ -556,7 +591,6 @@ html, body, [data-testid="stAppViewContainer"], .stApp, .main {
     margin-bottom: 8px;
 }
 
-/* Sidebar */
 section[data-testid="stSidebar"], [data-testid="stSidebar"] > div {
     background-color: var(--sidebar-bg) !important;
     color: var(--sidebar-text) !important;
@@ -568,7 +602,6 @@ section[data-testid="stSidebar"] h1, section[data-testid="stSidebar"] h2, sectio
     -webkit-text-fill-color: var(--sidebar-text) !important;
 }
 
-/* General Buttons */
 .stButton > button, [data-testid="stDownloadButton"] > button {
     background-color: var(--surface) !important;
     color: var(--app-text) !important;
@@ -578,7 +611,6 @@ section[data-testid="stSidebar"] h1, section[data-testid="stSidebar"] h2, sectio
     font-weight: 600 !important;
 }
 
-/* Chat bubbles */
 [data-testid="stChatMessage"] {
     border-radius: 16px !important;
     padding: 0.75rem 0.95rem !important;
@@ -604,7 +636,6 @@ section[data-testid="stSidebar"] h1, section[data-testid="stSidebar"] h2, sectio
     -webkit-text-fill-color: #1E3A8A !important;
 }
 
-/* --- REMOVE OUTER BLACK BOX IN PC & MAKE FLOATING GEMINI/CHATGPT PILL --- */
 [data-testid="stBottom"],
 [data-testid="stBottom"] > div,
 [data-testid="stBottom"] [data-testid="stVerticalBlock"],
@@ -626,7 +657,6 @@ section[data-testid="stSidebar"] h1, section[data-testid="stSidebar"] h2, sectio
     padding: 0 !important;
 }
 
-/* Floating sleek pill container */
 [data-testid="stBottom"] [data-testid="stHorizontalBlock"] {
     display: grid !important;
     grid-template-columns: 38px minmax(0, 1fr) 38px 38px !important;
@@ -652,7 +682,6 @@ section[data-testid="stSidebar"] h1, section[data-testid="stSidebar"] h2, sectio
     justify-content: center !important;
 }
 
-/* Seamless Text Input inside the pill (like ChatGPT / Gemini) */
 [data-testid="stBottom"] [data-testid="stTextInput"] { width: 100% !important; }
 [data-testid="stBottom"] div[data-baseweb="input"],
 [data-testid="stBottom"] div[data-baseweb="base-input"] {
@@ -682,7 +711,6 @@ section[data-testid="stSidebar"] h1, section[data-testid="stSidebar"] h2, sectio
 }
 [data-testid="stBottom"] [data-testid="InputInstructions"] { display: none !important; }
 
-/* Premium Circular Action Buttons (Slate-Indigo instead of Green) */
 [data-testid="stBottom"] button {
     border-radius: 50% !important;
     width: 38px !important;
@@ -701,7 +729,6 @@ section[data-testid="stSidebar"] h1, section[data-testid="stSidebar"] h2, sectio
 }
 [data-testid="stBottom"] button:hover { transform: scale(1.06); }
 
-/* Plus & Language Popover Button (Sleek Dark Slate) */
 [data-testid="stBottom"] [data-testid="stPopover"] > button {
     background-color: #334155 !important;
     border: 1px solid #475569 !important;
@@ -709,7 +736,6 @@ section[data-testid="stSidebar"] h1, section[data-testid="stSidebar"] h2, sectio
 }
 [data-testid="stBottom"] [data-testid="stPopover"] > button svg { display: none !important; }
 
-/* Mic Button (Premium Indigo-Slate, NO Green) */
 [data-testid="stBottom"] button[kind="secondary"] {
     background-color: #334155 !important;
     border: 1px solid #475569 !important;
@@ -719,13 +745,11 @@ section[data-testid="stSidebar"] h1, section[data-testid="stSidebar"] h2, sectio
     background-color: #475569 !important;
 }
 
-/* Send Button (Vibrant Royal Blue-Indigo Gradient) */
 [data-testid="stBottom"] button[kind="primary"] {
     background: linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%) !important;
     font-size: 15px !important;
 }
 
-/* Mobile Responsive Polish */
 @media (max-width: 600px) {
     .slim-header { font-size: 0.92rem; padding: 8px 12px; }
     [data-testid="stBottom"] { padding: 0.35rem 0.45rem 0.5rem 0.45rem !important; }
@@ -766,7 +790,7 @@ with st.sidebar:
                 st.secrets.get("GEMINI_API_KEY") or os.environ.get("GEMINI_API_KEY") or "")
     api_keys = [k.strip().strip('"\'') for k in str(raw_keys).split(",") if k.strip()]
 
-    model_choice = st.selectbox("🤖 AI મોડેલ:", ["gemini-2.5-flash-lite", "gemini-3.5-flash-lite", "gemini-3.5-flash"])
+    model_choice = st.selectbox("🤖 AI મોડેલ:", ACTIVE_MODELS)
 
     st.markdown("### 🛠️ ક્વિક ટૂલ્સ")
     quick_action = None
@@ -845,7 +869,6 @@ if st.session_state.mcq_questions:
                 if q.get("explanation"):
                     st.caption(f"💡 સમજૂતી: {q['explanation']}")
 
-# Compact one-line voice notice (never takes huge screen space)
 if st.session_state.voice_error:
     e1, e2 = st.columns([8, 1])
     e1.warning(f"⚠️ {st.session_state.voice_error}")
@@ -1022,13 +1045,13 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "user"
             )
             prompt_text = f"{sys_prompt}\n\n{recent_hist}\nવિદ્યાર્થીનો પ્રશ્ન: {clean_q}"
 
-            models = [model_choice] + [m for m in ["gemini-2.5-flash-lite", "gemini-3.5-flash-lite", "gemini-3.5-flash"] if m != model_choice]
             placeholder = st.empty()
             placeholder.markdown("⚡ *તમારા પ્રશ્નનો જવાબ તૈયાર થઈ રહ્યો છે...*")
             answer_text, success, last_err = "", False, None
 
             for key in api_keys:
                 client = genai.Client(api_key=key)
+                models = get_available_models_for_client(client, model_choice)
                 contents = []
                 contents.extend(book_page_parts)
                 contents.extend(user_att_parts)
@@ -1051,7 +1074,17 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "user"
                             break
                     except Exception as e:
                         last_err = e
-                        if any(x in str(e) for x in ("404", "429", "RESOURCE_EXHAUSTED")):
+                        if not any(x in str(e) for x in ("404", "429", "RESOURCE_EXHAUSTED", "API_KEY_INVALID")):
+                            try:
+                                resp = client.models.generate_content(model=mod, contents=contents)
+                                if resp and resp.text and resp.text.strip():
+                                    placeholder.empty()
+                                    render_message_with_visuals(resp.text)
+                                    answer_text, success = resp.text, True
+                                    break
+                            except Exception as e2:
+                                last_err = e2
+                        if any(x in str(last_err) for x in ("429", "RESOURCE_EXHAUSTED", "API_KEY_INVALID")):
                             break
                 if success:
                     break
@@ -1064,6 +1097,7 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "user"
                     st.rerun()
             else:
                 placeholder.empty()
-                err_msg = "❌ જવાબ મેળવી શકાયો નથી. કૃપા કરીને થોડીવાર પછી ફરી પ્રયાસ કરો."
+                friendly = format_friendly_error(last_err)
+                err_msg = f"❌ {friendly}"
                 st.error(err_msg)
                 st.session_state.messages.append({"role": "assistant", "content": err_msg})
