@@ -78,15 +78,16 @@ def build_pdf_bytes(messages):
 
 def transcribe_gujarati(audio_file, api_keys, preferred_model="gemini-2.5-flash-lite", lang_name="ગુજરાતી"):
     if not HAS_GENAI or not api_keys or not audio_file:
-        return "", "API Key અથવા ઓડિયો ફાઈલ ઉપલબ્ધ નથી."
+        return "", "API Key અથવા ઓડિયો ઉપલબ્ધ નથી."
 
     audio_bytes = audio_file.getvalue()
     if len(audio_bytes) < 100:
-        return "", "ઓડિયો રેકોર્ડ થયો નથી."
+        return "", "ઓડિયો રેકોર્ડ થયો નથી, ફરીથી બોલો."
 
     detected_mime = getattr(audio_file, "type", None) or "audio/wav"
-    mime_candidates = list(dict.fromkeys([detected_mime, "audio/wav", "audio/webm", "audio/mp4"]))
-    model_candidates = list(dict.fromkeys([preferred_model, "gemini-2.5-flash-lite", "gemini-2.5-flash"]))
+    mime_candidates = list(dict.fromkeys([detected_mime, "audio/wav", "audio/webm", "audio/mp4", "audio/ogg"]))
+    # Use active valid models (never deprecated gemini-2.5-flash)
+    model_candidates = list(dict.fromkeys([preferred_model, "gemini-2.5-flash-lite", "gemini-3.5-flash-lite", "gemini-3.5-flash"]))
 
     script_hint = {
         "ગુજરાતી": "Gujarati script (ગુજરાતી લિપિ)",
@@ -118,7 +119,9 @@ def transcribe_gujarati(audio_file, api_keys, preferred_model="gemini-2.5-flash-
             if any(x in last_err for x in ("429", "RESOURCE_EXHAUSTED")):
                 break
 
-    return "", f"ઓડિયો ટ્રાન્સક્રાઈબ ન થઈ શક્યો: {last_err}"
+    if "429" in last_err or "RESOURCE_EXHAUSTED" in last_err:
+        return "", "API ક્વોટા પૂરો થયો છે, થોડીવાર પછી ફરી પ્રયાસ કરો."
+    return "", "અવાજ સ્પષ્ટ સંભળાયો નથી, ફરીથી નજીકથી બોલો."
 
 @st.cache_data
 def load_syllabus():
@@ -188,11 +191,9 @@ _STATE_ALIASES = {
 }
 
 def build_india_map_html(map_spec):
-    """Build a crisp, accurate SVG India Map with symbols, state labels & legend."""
     title = map_spec.get("title", "ભારતનો નકશો - નકશા પૂર્તિ")
     items = map_spec.get("items", [])
 
-    # Accurate India SVG outline path
     india_outline = (
         "M 162,25 L 185,22 L 210,36 L 222,55 L 205,72 L 198,92 L 222,108 L 245,132 "
         "L 285,148 L 325,152 L 334,138 L 342,152 L 365,152 L 395,132 L 422,142 L 414,168 "
@@ -212,7 +213,6 @@ def build_india_map_html(map_spec):
         color = str(item.get("color", "#DC2626"))
         states = item.get("states", [])
 
-        # Legend entry
         ly = 56 + idx * 36
         legend_svg.append(
             f'<rect x="448" y="{ly-14}" width="22" height="22" rx="5" fill="{color}" fill-opacity="0.18" stroke="{color}" stroke-width="1.5"/>'
@@ -229,7 +229,6 @@ def build_india_map_html(map_spec):
             cnt = state_offset_count.get(key, 0)
             state_offset_count[key] = cnt + 1
 
-            # Offset multiple symbols in the same state so they never overlap
             dx = (cnt % 2) * 20 - (10 if cnt > 0 else 0)
             dy = (cnt // 2) * 18
             px, py = bx + dx, by + dy
@@ -244,23 +243,19 @@ def build_india_map_html(map_spec):
                 )
 
     legend_height = max(140, 50 + len(items[:8]) * 36)
-    html = f"""
+    return f"""
     <div style="background:#FFFFFF; border:2px solid #93C5FD; border-radius:14px; padding:10px; font-family:'Noto Sans Gujarati', sans-serif;">
       <svg width="100%" viewBox="0 0 680 460" xmlns="http://www.w3.org/2000/svg" style="max-height:450px; display:block; margin:auto;">
         <rect x="0" y="0" width="680" height="460" rx="12" fill="#F8FAFC"/>
         <text x="340" y="26" text-anchor="middle" font-size="17" font-weight="bold" fill="#1E3A8A">{title}</text>
-        <!-- Compass -->
         <g transform="translate(55, 65)">
           <circle cx="0" cy="0" r="18" fill="#EFF6FF" stroke="#3B82F6" stroke-width="1.5"/>
           <line x1="0" y1="-13" x2="0" y2="13" stroke="#1E3A8A" stroke-width="1.5"/>
           <line x1="-13" y1="0" x2="13" y2="0" stroke="#1E3A8A" stroke-width="1.5"/>
           <text x="0" y="-21" text-anchor="middle" font-size="10" font-weight="bold" fill="#1E3A8A">ઉત્તર</text>
         </g>
-        <!-- India Outline -->
         <path d="{india_outline}" fill="#FEF9C3" stroke="#92400E" stroke-width="2.2" stroke-linejoin="round"/>
-        <!-- State Markers -->
         {''.join(markers_svg)}
-        <!-- Legend Box -->
         <rect x="438" y="34" width="232" height="{legend_height}" rx="10" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.5"/>
         <text x="554" y="50" text-anchor="middle" font-size="13.5" font-weight="bold" fill="#1E3A8A">📌 સંજ્ઞા સૂચિ (Legend)</text>
         <line x1="448" y1="55" x2="660" y2="55" stroke="#E2E8F0" stroke-width="1"/>
@@ -268,7 +263,6 @@ def build_india_map_html(map_spec):
       </svg>
     </div>
     """
-    return html
 
 # --- SMART GRADE, SUBJECT, DIAGRAM, MAP & GK DETECTION ---
 _GUJ_DIGIT_MAP = str.maketrans("૦૧૨૩૪૫૬૭૮૯", "0123456789")
@@ -470,8 +464,6 @@ def build_vision_pdf_parts(pdf_path, query_text, history_text):
     return parts
 
 def render_message_with_visuals(content):
-    """Render both India Map JSON blocks and SVG Diagrams cleanly using components.html so nothing gets stripped."""
-    # 1. Handle ```map_json ... ``` blocks
     if "```map_json" in content:
         segments = re.split(r"(```map_json[\s\S]*?```)", content)
         for seg in segments:
@@ -486,7 +478,6 @@ def render_message_with_visuals(content):
                 st.markdown(seg)
         return
 
-    # 2. Handle inline <svg>...</svg> diagrams using components.html so Streamlit never strips SVG tags
     clean = re.sub(r"```(?:svg|xml|html)?\s*(<svg[\s\S]*?</svg>)\s*```", r"\1", content, flags=re.IGNORECASE)
     if "<svg" in clean.lower() and "</svg>" in clean.lower():
         parts = re.split(r"(<svg[\s\S]*?</svg>)", clean, flags=re.IGNORECASE)
@@ -505,7 +496,7 @@ def render_message_with_visuals(content):
 
 syllabus_data = load_syllabus()
 
-# --- POLISHED UI & BOTTOM INPUT BAR STYLING ---
+# --- PREMIUM GEMINI / CHATGPT STYLE UI (NO BLACK BOX, NO GREEN BUTTONS, WIDE MOBILE INPUT) ---
 st.markdown("""
 <style>
 :root {
@@ -515,14 +506,9 @@ st.markdown("""
     --surface-border: #CBD5E1;
     --sidebar-bg: #FFFFFF;
     --sidebar-text: #0F172A;
-    --accent: #2563EB;
     --bubble-user: #1E3A8A;
     --bubble-assistant: #111827;
     --bubble-text: #FFFFFF;
-    --bottom-bar: #1E293B;
-    --bottom-bar-border: #475569;
-    --bottom-input: #0F172A;
-    --bottom-input-border: #64748B;
 }
 
 html, body, [data-testid="stAppViewContainer"], .stApp, .main {
@@ -536,8 +522,8 @@ html, body, [data-testid="stAppViewContainer"], .stApp, .main {
 [data-testid="stHeader"] { background: transparent !important; }
 
 .block-container {
-    padding-top: 2.6rem !important;
-    padding-bottom: 6.5rem !important;
+    padding-top: 2.5rem !important;
+    padding-bottom: 6.2rem !important;
     padding-left: 0.75rem !important;
     padding-right: 0.75rem !important;
     max-width: 820px !important;
@@ -553,7 +539,7 @@ html, body, [data-testid="stAppViewContainer"], .stApp, .main {
     text-align: center;
     font-size: 1.05rem;
     font-weight: 700;
-    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
+    box-shadow: 0 4px 14px rgba(37, 99, 235, 0.22);
     margin-bottom: 12px;
 }
 
@@ -582,7 +568,7 @@ section[data-testid="stSidebar"] h1, section[data-testid="stSidebar"] h2, sectio
     -webkit-text-fill-color: var(--sidebar-text) !important;
 }
 
-/* Buttons */
+/* General Buttons */
 .stButton > button, [data-testid="stDownloadButton"] > button {
     background-color: var(--surface) !important;
     color: var(--app-text) !important;
@@ -594,17 +580,17 @@ section[data-testid="stSidebar"] h1, section[data-testid="stSidebar"] h2, sectio
 
 /* Chat bubbles */
 [data-testid="stChatMessage"] {
-    border-radius: 14px !important;
+    border-radius: 16px !important;
     padding: 0.75rem 0.95rem !important;
     margin-bottom: 0.65rem !important;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.14) !important;
+    box-shadow: 0 2px 10px rgba(15, 23, 42, 0.12) !important;
     background-color: var(--bubble-assistant) !important;
-    border-left: 5px solid #34D399 !important;
+    border-left: 4px solid #3B82F6 !important;
 }
 [data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-user"]),
 [data-testid="stChatMessage"][aria-label*="user" i] {
     background-color: var(--bubble-user) !important;
-    border-left: 5px solid #60A5FA !important;
+    border-left: 4px solid #93C5FD !important;
 }
 [data-testid="stChatMessage"] p, [data-testid="stChatMessage"] li, [data-testid="stChatMessage"] span,
 [data-testid="stChatMessage"] strong, [data-testid="stChatMessage"] em {
@@ -618,111 +604,146 @@ section[data-testid="stSidebar"] h1, section[data-testid="stSidebar"] h2, sectio
     -webkit-text-fill-color: #1E3A8A !important;
 }
 
-/* Bottom input bar with wide Language Selector so "ગુજરાતી" fits completely */
-[data-testid="stBottom"] {
-    padding: 0.45rem 0.5rem !important;
+/* --- REMOVE OUTER BLACK BOX IN PC & MAKE FLOATING GEMINI/CHATGPT PILL --- */
+[data-testid="stBottom"],
+[data-testid="stBottom"] > div,
+[data-testid="stBottom"] [data-testid="stVerticalBlock"],
+[data-testid="stBottom"] [data-testid="stElementContainer"] {
     background: transparent !important;
+    background-color: transparent !important;
+    box-shadow: none !important;
+    border: none !important;
+}
+
+[data-testid="stBottom"] {
+    padding: 0.5rem 0.75rem 0.75rem 0.75rem !important;
     z-index: 99999 !important;
 }
+
 [data-testid="stBottom"] > div {
-    max-width: 820px !important;
+    max-width: 780px !important;
     margin: 0 auto !important;
     padding: 0 !important;
 }
+
+/* Floating sleek pill container */
 [data-testid="stBottom"] [data-testid="stHorizontalBlock"] {
     display: grid !important;
-    grid-template-columns: 38px 114px minmax(0, 1fr) 38px 38px !important;
+    grid-template-columns: 38px minmax(0, 1fr) 38px 38px !important;
     align-items: center !important;
-    gap: 6px !important;
-    background-color: var(--bottom-bar) !important;
-    border: 1px solid var(--bottom-bar-border) !important;
+    gap: 8px !important;
+    background: linear-gradient(135deg, #1E293B 0%, #0F172A 100%) !important;
+    border: 1px solid #334155 !important;
     border-radius: 999px !important;
-    padding: 5px 8px !important;
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25) !important;
+    padding: 6px 10px !important;
+    box-shadow: 0 10px 28px rgba(15, 23, 42, 0.25) !important;
     width: 100% !important;
     box-sizing: border-box !important;
 }
+
 [data-testid="stBottom"] [data-testid="stColumn"] {
-    width: 100% !important; min-width: 0 !important; max-width: 100% !important;
-    padding: 0 !important; margin: 0 !important;
-    display: flex !important; align-items: center !important; justify-content: center !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
 }
-[data-testid="stBottom"] [data-testid="stSelectbox"] { width: 100% !important; }
-[data-testid="stBottom"] [data-testid="stSelectbox"] div[data-baseweb="select"] > div {
-    background-color: #334155 !important;
-    color: #FFFFFF !important;
-    border-radius: 999px !important;
-    border: 1px solid #64748B !important;
-    min-height: 36px !important;
-    height: 36px !important;
-    font-size: 13px !important;
-    padding: 0 8px !important;
-}
-[data-testid="stBottom"] [data-testid="stSelectbox"] span,
-[data-testid="stBottom"] [data-testid="stSelectbox"] div,
-[data-testid="stBottom"] [data-testid="stSelectbox"] svg {
-    color: #FFFFFF !important;
-    -webkit-text-fill-color: #FFFFFF !important;
-    fill: #FFFFFF !important;
-}
+
+/* Seamless Text Input inside the pill (like ChatGPT / Gemini) */
 [data-testid="stBottom"] [data-testid="stTextInput"] { width: 100% !important; }
 [data-testid="stBottom"] div[data-baseweb="input"],
 [data-testid="stBottom"] div[data-baseweb="base-input"] {
-    background-color: var(--bottom-input) !important;
-    border-radius: 999px !important;
-    border: 1px solid var(--bottom-input-border) !important;
+    background-color: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
     min-height: 38px !important;
     width: 100% !important;
 }
 [data-testid="stBottom"] input,
 [data-testid="stBottom"] input[type="text"] {
-    background-color: var(--bottom-input) !important;
-    color: #FFFFFF !important;
-    -webkit-text-fill-color: #FFFFFF !important;
-    caret-color: #FFFFFF !important;
-    border-radius: 999px !important;
+    background-color: transparent !important;
+    color: #F8FAFC !important;
+    -webkit-text-fill-color: #F8FAFC !important;
+    caret-color: #60A5FA !important;
     border: none !important;
-    padding: 6px 12px !important;
-    font-size: 15px !important;
+    box-shadow: none !important;
+    padding: 6px 6px !important;
+    font-size: 15.5px !important;
     height: 38px !important;
     width: 100% !important;
 }
 [data-testid="stBottom"] input::placeholder {
-    color: #CBD5E1 !important;
-    -webkit-text-fill-color: #CBD5E1 !important;
+    color: #94A3B8 !important;
+    -webkit-text-fill-color: #94A3B8 !important;
     opacity: 1 !important;
 }
 [data-testid="stBottom"] [data-testid="InputInstructions"] { display: none !important; }
+
+/* Premium Circular Action Buttons (Slate-Indigo instead of Green) */
 [data-testid="stBottom"] button {
     border-radius: 50% !important;
-    width: 38px !important; height: 38px !important; min-height: 38px !important; min-width: 38px !important;
-    padding: 0 !important; border: none !important;
-    color: #FFFFFF !important; -webkit-text-fill-color: #FFFFFF !important;
-    display: flex !important; align-items: center !important; justify-content: center !important;
+    width: 38px !important;
+    height: 38px !important;
+    min-height: 38px !important;
+    min-width: 38px !important;
+    padding: 0 !important;
+    border: none !important;
+    color: #FFFFFF !important;
+    -webkit-text-fill-color: #FFFFFF !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
     box-shadow: none !important;
+    transition: transform 0.15s ease, background-color 0.2s ease !important;
 }
+[data-testid="stBottom"] button:hover { transform: scale(1.06); }
+
+/* Plus & Language Popover Button (Sleek Dark Slate) */
 [data-testid="stBottom"] [data-testid="stPopover"] > button {
     background-color: #334155 !important;
-    font-size: 16px !important;
+    border: 1px solid #475569 !important;
+    font-size: 17px !important;
 }
 [data-testid="stBottom"] [data-testid="stPopover"] > button svg { display: none !important; }
+
+/* Mic Button (Premium Indigo-Slate, NO Green) */
 [data-testid="stBottom"] button[kind="secondary"] {
-    background-color: #10B981 !important;
+    background-color: #334155 !important;
+    border: 1px solid #475569 !important;
     font-size: 16px !important;
 }
+[data-testid="stBottom"] button[kind="secondary"]:hover {
+    background-color: #475569 !important;
+}
+
+/* Send Button (Vibrant Royal Blue-Indigo Gradient) */
 [data-testid="stBottom"] button[kind="primary"] {
-    background-color: #2563EB !important;
+    background: linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%) !important;
     font-size: 15px !important;
 }
 
+/* Mobile Responsive Polish */
 @media (max-width: 600px) {
-    .slim-header { font-size: 0.92rem; padding: 8px 10px; }
+    .slim-header { font-size: 0.92rem; padding: 8px 12px; }
+    [data-testid="stBottom"] { padding: 0.35rem 0.45rem 0.5rem 0.45rem !important; }
     [data-testid="stBottom"] [data-testid="stHorizontalBlock"] {
-        grid-template-columns: 34px 102px minmax(0, 1fr) 34px 34px !important;
-        gap: 4px !important;
+        grid-template-columns: 34px minmax(0, 1fr) 34px 34px !important;
+        gap: 6px !important;
+        padding: 4px 8px !important;
     }
     [data-testid="stBottom"] button {
-        width: 34px !important; height: 34px !important; min-height: 34px !important; min-width: 34px !important;
+        width: 34px !important;
+        height: 34px !important;
+        min-height: 34px !important;
+        min-width: 34px !important;
+    }
+    [data-testid="stBottom"] input,
+    [data-testid="stBottom"] input[type="text"] {
+        font-size: 14.5px !important;
+        height: 34px !important;
     }
 }
 </style>
@@ -745,7 +766,7 @@ with st.sidebar:
                 st.secrets.get("GEMINI_API_KEY") or os.environ.get("GEMINI_API_KEY") or "")
     api_keys = [k.strip().strip('"\'') for k in str(raw_keys).split(",") if k.strip()]
 
-    model_choice = st.selectbox("🤖 AI મોડેલ:", ["gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-3.5-flash-lite"])
+    model_choice = st.selectbox("🤖 AI મોડેલ:", ["gemini-2.5-flash-lite", "gemini-3.5-flash-lite", "gemini-3.5-flash"])
 
     st.markdown("### 🛠️ ક્વિક ટૂલ્સ")
     quick_action = None
@@ -824,8 +845,13 @@ if st.session_state.mcq_questions:
                 if q.get("explanation"):
                     st.caption(f"💡 સમજૂતી: {q['explanation']}")
 
+# Compact one-line voice notice (never takes huge screen space)
 if st.session_state.voice_error:
-    st.error(f"⚠️ {st.session_state.voice_error}")
+    e1, e2 = st.columns([8, 1])
+    e1.warning(f"⚠️ {st.session_state.voice_error}")
+    if e2.button("✖", key="dismiss_err"):
+        st.session_state.voice_error = ""
+        st.rerun()
 
 # --- VOICE INPUT ---
 if st.session_state.mic_open:
@@ -864,33 +890,33 @@ if attached:
             st.session_state.pop("bottom_camera", None)
             st.rerun()
 
-# --- BOTTOM INPUT BAR (WITH FULL "ગુજરાતી" LANGUAGE SELECTOR) ---
+# --- SLEEK GEMINI / CHATGPT STYLE FLOATING INPUT BAR ---
 with getattr(st, "bottom", st.container()):
-    col_plus, col_lang, col_in, col_mic, col_send = st.columns([1, 2.6, 7.2, 1, 1], vertical_alignment="center")
+    col_plus, col_in, col_mic, col_send = st.columns([1, 10, 1, 1], vertical_alignment="center")
     with col_plus:
         with st.popover("➕"):
+            selected_lang = st.radio(
+                "🌐 જવાબની ભાષા પસંદ કરો:",
+                ["ગુજરાતી", "English", "हिन्दी"],
+                index=["ગુજરાતી", "English", "हिन्दी"].index(st.session_state.ui_lang),
+                horizontal=True,
+                key="popover_lang_select"
+            )
+            st.session_state.ui_lang = selected_lang
+            st.divider()
             st.file_uploader("📁 ગેલેરી / PDF પસંદ કરો", key="bottom_uploader")
             st.camera_input("📸 કેમેરાથી ફોટો પાડો", key="bottom_camera")
-    with col_lang:
-        selected_lang = st.selectbox(
-            "ભાષા",
-            ["ગુજરાતી", "English", "हिन्दी"],
-            index=["ગુજરાતી", "English", "हिन्दी"].index(st.session_state.ui_lang),
-            key="bottom_lang_select",
-            label_visibility="collapsed"
-        )
-        st.session_state.ui_lang = selected_lang
     with col_in:
         placeholders = {
-            "ગુજરાતી": "પ્રશ્ન, આકૃતિ, નકશો, ઉદાહરણ, GK કે Current Affairs પૂછો...",
-            "English": "Ask any question, diagram, map, example, GK or Current Affairs...",
-            "हिन्दी": "प्रश्न, चित्र, मानचित्र, उदाहरण, GK या Current Affairs पूछें..."
+            "ગુજરાતી": f"પ્રશ્ન, આકૃતિ, નકશો કે GK પૂછો ({st.session_state.ui_lang})...",
+            "English": "Ask any question, diagram, map or GK (English)...",
+            "हिन्दी": "प्रश्न, चित्र, मानचित्र या GK पूछें (हिन्दी)..."
         }
         user_text = st.text_input(
             "પ્રશ્ન...",
             value=st.session_state.draft_text,
             key=f"chat_box_{st.session_state.input_version}",
-            placeholder=placeholders.get(selected_lang, placeholders["ગુજરાતી"]),
+            placeholder=placeholders.get(st.session_state.ui_lang, placeholders["ગુજરાતી"]),
             label_visibility="collapsed"
         )
         st.session_state.draft_text = user_text
@@ -963,7 +989,7 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "user"
                     "}\n"
                     "```\n"
                     "   - દરેક આઇટમ માટે અલગ સંજ્ઞા (`▲`, `●`, `■`, `★`, `◆`, `✚`) અને અલગ ઘાટો રંગ (`#D97706`, `#16A34A`, `#2563EB`, `#DC2626`, `#7C3AED`, `#0D9488`) વાપરો.\n"
-                    "   - `states` માં ભારતના સાચા રાજ્યોના નામ ગુજરાતીમાં લખો (જેમ કે: પંજાબ, ઉત્તર પ્રદેશ, પશ્ચિમ બંગાળ, રાજસ્થાન, ગુજરાત, મહારાષ્ટ્ર, મધ્ય પ્રદેશ, બિહાર, ઓડિશા, કર્ણાટક, તમિલનાડુ, આંધ્ર પ્રદેશ, તેલંગાણા, કેરળ, આસામ, ઝારખંડ, છત્તીસગઢ, હરિયાણા).\n"
+                    "   - `states` માં ભારતના સાચા રાજ્યોના નામ ગુજરાતીમાં લખો.\n"
                     "   - `map_json` બ્લોકની નીચે દરેક પાક અને તેના ઉત્પાદક રાજ્યોની મુદ્દાસર સમજૂતી આપો."
                 )
             elif wants_diagram(clean_q):
@@ -996,7 +1022,7 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "user"
             )
             prompt_text = f"{sys_prompt}\n\n{recent_hist}\nવિદ્યાર્થીનો પ્રશ્ન: {clean_q}"
 
-            models = [model_choice] + [m for m in ["gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-3.5-flash-lite"] if m != model_choice]
+            models = [model_choice] + [m for m in ["gemini-2.5-flash-lite", "gemini-3.5-flash-lite", "gemini-3.5-flash"] if m != model_choice]
             placeholder = st.empty()
             placeholder.markdown("⚡ *તમારા પ્રશ્નનો જવાબ તૈયાર થઈ રહ્યો છે...*")
             answer_text, success, last_err = "", False, None
@@ -1025,7 +1051,7 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "user"
                             break
                     except Exception as e:
                         last_err = e
-                        if any(x in str(e) for x in ("429", "RESOURCE_EXHAUSTED")):
+                        if any(x in str(e) for x in ("404", "429", "RESOURCE_EXHAUSTED")):
                             break
                 if success:
                     break
@@ -1038,6 +1064,6 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "user"
                     st.rerun()
             else:
                 placeholder.empty()
-                err_msg = f"❌ જવાબ મેળવી શકાયો નથી. ({last_err})"
+                err_msg = "❌ જવાબ મેળવી શકાયો નથી. કૃપા કરીને થોડીવાર પછી ફરી પ્રયાસ કરો."
                 st.error(err_msg)
                 st.session_state.messages.append({"role": "assistant", "content": err_msg})
