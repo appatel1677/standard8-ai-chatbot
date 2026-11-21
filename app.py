@@ -1,6 +1,6 @@
 ﻿import streamlit as st
 import streamlit.components.v1 as components
-import json, os, io, re, time
+import json, os, io, re, math
 from PIL import Image
 from fpdf import FPDF
 
@@ -18,12 +18,18 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Current 2026 active Gemini models + automatic discovery fallback
 ACTIVE_MODELS = [
     "gemini-3.5-flash",
     "gemini-3.5-flash-lite",
     "gemini-3-flash-preview",
+    "gemini-2.5-flash",
     "gemini-2.5-flash-lite",
+]
+
+DEFAULT_IMAGE_MODELS = [
+    "gemini-2.5-flash-image",
+    "gemini-3-pro-image-preview",
+    "gemini-2.0-flash-exp-image-generation",
 ]
 
 def get_available_models_for_client(client, preferred_model):
@@ -33,10 +39,9 @@ def get_available_models_for_client(client, preferred_model):
         for m in client.models.list():
             name = (getattr(m, "name", "") or "").replace("models/", "")
             methods = getattr(m, "supported_generation_methods", None) or getattr(m, "supported_actions", None) or []
-            if "gemini" in name.lower() and not any(x in name.lower() for x in ("embedding", "imagen", "veo", "aqa", "tts", "audio", "robotics")):
+            if "gemini" in name.lower() and not any(x in name.lower() for x in ("embedding", "imagen", "veo", "aqa", "tts", "audio", "robotics", "image")):
                 if not methods or "generateContent" in methods:
                     discovered.append(name)
-        # Prefer flash models first so responses are fast
         flash_models = [n for n in discovered if "flash" in n.lower()]
         other_models = [n for n in discovered if "flash" not in n.lower()]
         for n in flash_models + other_models:
@@ -45,6 +50,21 @@ def get_available_models_for_client(client, preferred_model):
     except Exception:
         pass
     return candidates
+
+def get_available_image_models(client):
+    img_candidates = list(DEFAULT_IMAGE_MODELS)
+    imagen_candidates = ["imagen-3.0-generate-002", "imagen-3.0-fast-generate-001"]
+    try:
+        for m in client.models.list():
+            name = (getattr(m, "name", "") or "").replace("models/", "")
+            low = name.lower()
+            if "image" in low and "imagen" not in low and name not in img_candidates:
+                img_candidates.insert(0, name)
+            elif "imagen" in low and name not in imagen_candidates:
+                imagen_candidates.insert(0, name)
+    except Exception:
+        pass
+    return img_candidates, imagen_candidates
 
 # --- PDF & MCQ HELPERS ---
 def parse_mcq(text):
@@ -98,7 +118,7 @@ def build_pdf_bytes(messages):
         pdf.cell(0, 7, ("વિદ્યાર્થી:" if m["role"] == "user" else "શિક્ષક:"), ln=True)
         pdf.set_font(base_font, "", 10)
         clean_txt = re.sub(r"<svg[\s\S]*?</svg>", "[આકૃતિ / નકશો સંલગ્ન છે]", m["content"])
-        clean_txt = re.sub(r"```map_json[\s\S]*?```", "[ભારતનો નકશો સંલગ્ન છે]", clean_txt)
+        clean_txt = re.sub(r"```map_json[\s\S]*?```", "[નકશો સંલગ્ન છે]", clean_txt)
         clean_txt = re.sub(r"<[^>]+>", "", clean_txt)
         pdf.multi_cell(0, 6, clean_txt)
         pdf.ln(2)
@@ -165,7 +185,177 @@ def load_syllabus():
             return json.load(f)
     return {}
 
-# --- ACCURATE INDIA MAP COORDINATES & RENDERER ---
+# --- NANO BANANA (GEMINI IMAGE GEN) TEXTBOOK MAP & DIAGRAM GENERATOR ---
+def generate_nano_banana_visual(query_text, api_keys, visual_type="map", reply_lang="ગુજરાતી"):
+    """Generates GCERT textbook-style full-color maps, historical forts/kingdoms, science & math diagrams."""
+    if not HAS_GENAI or not api_keys:
+        return None, "API Key ઉપલબ્ધ નથી."
+
+    lang_script = {
+        "ગુજરાતી": "Gujarati script (ગુજરાતી લિપિ)",
+        "English": "English text",
+        "हिन्दी": "Hindi Devanagari script (हिन्दी लिपि)"
+    }.get(reply_lang, "Gujarati script (ગુજરાતી લિપિ)")
+
+    if visual_type == "map":
+        prompt = (
+            f"Create an authentic, full-color GCERT school textbook printed map page illustration for: '{query_text}'. "
+            f"Print all headings, labels, state/district/kingdom/fort names, compass North arrow ('ઉત્તર'), ocean names, and a bottom-right legend box ('સંજ્ઞા સૂચિ') clearly in {lang_script}. "
+            "Style: Authentic Indian school textbook cartography with crisp black borders, distinct pastel colors (yellow, light green, pink, purple, orange, light blue) for different regions/districts/historical empires, light blue ocean water, white margin frame, bold header title at top. "
+            "High resolution, accurate geography, zero garbled or overlapping text."
+        )
+    elif visual_type == "math":
+        prompt = (
+            f"Create a clean, colorful GCERT school textbook math geometry/fraction diagram illustration for: '{query_text}'. "
+            f"Print all fraction numbers, division lines, shaded sectors, and labels clearly in {lang_script}. "
+            "Style: Pure white background, crisp black geometric outlines, bright distinct pastel colors for shaded parts, clear labels and arrows, school textbook quality."
+        )
+    else:
+        prompt = (
+            f"Create an authentic, full-color GCERT school textbook labeled scientific/educational diagram for: '{query_text}'. "
+            f"Print the top title and all part pointer labels clearly in {lang_script}. "
+            "Style: Pure white background, crisp dark outlines, vibrant educational textbook colors, neat straight pointer lines to each part, uncluttered layout, zero overlapping text."
+        )
+
+    last_img_err = ""
+    for key in api_keys:
+        client = genai.Client(api_key=key)
+        nb_models, imagen_models = get_available_image_models(client)
+
+        # 1. Try Nano Banana native image models
+        for nb_model in nb_models:
+            try:
+                res = client.models.generate_content(
+                    model=nb_model,
+                    contents=[prompt],
+                    config=types.GenerateContentConfig(response_modalities=["IMAGE"])
+                )
+                for cand in getattr(res, "candidates", []) or []:
+                    for part in getattr(cand.content, "parts", []) or []:
+                        if getattr(part, "inline_data", None) and getattr(part, "inline_data", None).data:
+                            return part.inline_data.data, ""
+            except Exception as e:
+                last_img_err = str(e)
+                try:
+                    res = client.models.generate_content(model=nb_model, contents=[prompt])
+                    for cand in getattr(res, "candidates", []) or []:
+                        for part in getattr(cand.content, "parts", []) or []:
+                            if getattr(part, "inline_data", None) and getattr(part, "inline_data", None).data:
+                                return part.inline_data.data, ""
+                except Exception as e2:
+                    last_img_err = str(e2)
+
+        # 2. Fallback to Imagen models
+        for img_mod in imagen_models:
+            try:
+                res = client.models.generate_images(
+                    model=img_mod,
+                    prompt=prompt,
+                    config=types.GenerateImagesConfig(
+                        number_of_images=1,
+                        output_mime_type="image/jpeg",
+                        aspect_ratio="4:3"
+                    )
+                )
+                if res and getattr(res, "generated_images", None):
+                    return res.generated_images[0].image.image_bytes, ""
+            except Exception as e3:
+                last_img_err = str(e3)
+
+    return None, last_img_err
+
+# --- SMART MATH FRACTION / CIRCLE DIAGRAM BUILDER ---
+def build_math_fraction_svg(query_text):
+    """Generates an exact geometric SVG when student asks to divide a circle into parts and highlight a fraction."""
+    q = (query_text or "").translate(str.maketrans("૦૧૨૩૪૫૬૭૮૯", "0123456789")).lower()
+    word_to_num = {
+        "બે": 2, "2": 2, "two": 2,
+        "ત્રણ": 3, "3": 3, "three": 3,
+        "ચાર": 4, "4": 4, "four": 4,
+        "પાંચ": 5, "5": 5, "five": 5,
+        "છ": 6, "6": 6, "six": 6,
+        "સાત": 7, "7": 7, "seven": 7,
+        "આઠ": 8, "8": 8, "eight": 8,
+    }
+    total_parts = 3
+    for w, n in word_to_num.items():
+        if re.search(rf"{w}\s*(?:ભાગ|સમાન ભાગ|ટુકડા|parts)", q):
+            total_parts = n
+            break
+
+    frac_match = re.search(r"(\d+)\s*/\s*(\d+)", q)
+    num, den = (int(frac_match.group(1)), int(frac_match.group(2))) if frac_match else (1, total_parts)
+    if den == 0:
+        den = total_parts
+
+    cx, cy, r = 160, 165, 105
+    palette = ["#93C5FD", "#86EFAC", "#FDE047", "#FDBA74", "#F9A8D4", "#C4B5FD", "#5EEAD4", "#FCA5A5"]
+
+    # Draw left circle: Divided into `total_parts` equal parts
+    left_slices = []
+    for i in range(total_parts):
+        a1 = -90 + (360.0 / total_parts) * i
+        a2 = -90 + (360.0 / total_parts) * (i + 1)
+        x1 = cx + r * math.cos(math.radians(a1))
+        y1 = cy + r * math.sin(math.radians(a1))
+        x2 = cx + r * math.cos(math.radians(a2))
+        y2 = cy + r * math.sin(math.radians(a2))
+        large_arc = 1 if (a2 - a1) > 180 else 0
+        fill_c = palette[i % len(palette)]
+        left_slices.append(
+            f'<path d="M {cx},{cy} L {x1:.1f},{y1:.1f} A {r},{r} 0 {large_arc},1 {x2:.1f},{y2:.1f} Z" '
+            f'fill="{fill_c}" stroke="#1E293B" stroke-width="2.2"/>'
+        )
+        mid_a = math.radians((a1 + a2) / 2)
+        lx = cx + (r * 0.58) * math.cos(mid_a)
+        ly = cy + (r * 0.58) * math.sin(mid_a)
+        left_slices.append(
+            f'<text x="{lx:.1f}" y="{ly:.1f}" text-anchor="middle" dominant-baseline="middle" '
+            f'font-size="14" font-weight="bold" fill="#0F172A">ભાગ {i+1}</text>'
+        )
+
+    # Draw right circle: Highlighting `num/den` fraction
+    cx2, cy2 = 430, 165
+    right_slices = []
+    disp_den = max(den, 1)
+    disp_num = min(num, disp_den)
+    for i in range(disp_den):
+        a1 = -90 + (360.0 / disp_den) * i
+        a2 = -90 + (360.0 / disp_den) * (i + 1)
+        x1 = cx2 + r * math.cos(math.radians(a1))
+        y1 = cy2 + r * math.sin(math.radians(a1))
+        x2 = cx2 + r * math.cos(math.radians(a2))
+        y2 = cy2 + r * math.sin(math.radians(a2))
+        large_arc = 1 if (a2 - a1) > 180 else 0
+        fill_c = "#2563EB" if i < disp_num else "#F1F5F9"
+        txt_c = "#FFFFFF" if i < disp_num else "#334155"
+        if disp_den == 1:
+            right_slices.append(f'<circle cx="{cx2}" cy="{cy2}" r="{r}" fill="{fill_c}" stroke="#1E293B" stroke-width="2.2"/>')
+        else:
+            right_slices.append(
+                f'<path d="M {cx2},{cy2} L {x1:.1f},{y1:.1f} A {r},{r} 0 {large_arc},1 {x2:.1f},{y2:.1f} Z" '
+                f'fill="{fill_c}" stroke="#1E293B" stroke-width="2.2"/>'
+            )
+        mid_a = math.radians((a1 + a2) / 2)
+        lx = cx2 + (r * 0.55) * math.cos(mid_a)
+        ly = cy2 + (r * 0.55) * math.sin(mid_a)
+        right_slices.append(
+            f'<text x="{lx:.1f}" y="{ly:.1f}" text-anchor="middle" dominant-baseline="middle" '
+            f'font-size="14" font-weight="bold" fill="{txt_c}">1/{disp_den}</text>'
+        )
+
+    return f"""
+    <svg width="100%" viewBox="0 0 600 330" xmlns="http://www.w3.org/2000/svg" style="max-height:330px; display:block; margin:auto;">
+      <rect width="600" height="330" rx="12" fill="#FFFFFF"/>
+      <text x="300" y="28" text-anchor="middle" font-size="17" font-weight="bold" fill="#1E3A8A">📐 ગણિત આકૃતિ: વર્તુળના {total_parts} ભાગ અને {num}/{den} અપૂર્ણાંક</text>
+      {''.join(left_slices)}
+      <text x="{cx}" y="295" text-anchor="middle" font-size="14" font-weight="bold" fill="#0F172A">૧. વર્તુળના {total_parts} સમાન ભાગ</text>
+      {''.join(right_slices)}
+      <text x="{cx2}" y="295" text-anchor="middle" font-size="14" font-weight="bold" fill="#1D4ED8">૨. રંગીન ભાગ = {num}/{den} (અડધો/અપૂર્ણાંક)</text>
+    </svg>
+    """
+
+# --- ACCURATE INDIA MAP COORDINATES (STATES + HISTORICAL KINGDOMS & FORTS) ---
 _INDIA_STATE_COORDS = {
     "jammu": (165, 52, "જમ્મુ-કાશ્મીર"),
     "ladakh": (195, 42, "લદ્દાખ"),
@@ -197,6 +387,20 @@ _INDIA_STATE_COORDS = {
     "manipur": (398, 195, "મણિપુર"),
     "nagaland": (405, 175, "નાગાલેન્ડ"),
     "sikkim": (332, 152, "સિક્કિમ"),
+    # Historical Kingdoms, Ancient Capitals & Forts
+    "magadha": (296, 184, "મગધ (પાટલિપુત્ર)"),
+    "vaishali": (286, 168, "વૈશાલી"),
+    "avanti": (168, 215, "અવંતિ (ઉજ્જૈન)"),
+    "kashi": (254, 176, "કાશી (વારાણસી)"),
+    "kosala": (235, 155, "કોસલ (અયોધ્યા)"),
+    "kalinga": (284, 268, "કલિંગ"),
+    "hastinapur": (182, 128, "હસ્તિનાપુર / દિલ્હી"),
+    "lothal": (86, 228, "લોથલ"),
+    "dholavira": (72, 206, "ધોળાવીરા"),
+    "chittorgarh": (132, 192, "ચિત્તોડગઢ કિલ્લો"),
+    "raigad": (132, 286, "રાયગઢ કિલ્લો"),
+    "golconda": (202, 304, "ગોલકોંડા કિલ્લો"),
+    "gwalior": (194, 185, "ગ્વાલિયર કિલ્લો"),
 }
 
 _STATE_ALIASES = {
@@ -223,6 +427,19 @@ _STATE_ALIASES = {
     "જમ્મુ": "jammu", "jammu": "jammu", "kashmir": "jammu",
     "ગોવા": "goa", "goa": "goa",
     "સિક્કિમ": "sikkim", "sikkim": "sikkim",
+    # Historical aliases
+    "મગધ": "magadha", "મગધ દેશ": "magadha", "પાટલિપુત્ર": "magadha", "રાજગૃહ": "magadha", "magadha": "magadha",
+    "વૈશાલી": "vaishali", "vaishali": "vaishali",
+    "અવંતિ": "avanti", "ઉજ્જૈન": "avanti", "avanti": "avanti",
+    "કાશી": "kashi", "વારાણસી": "kashi", "kashi": "kashi",
+    "કોસલ": "kosala", "અયોધ્યા": "kosala", "kosala": "kosala",
+    "કલિંગ": "kalinga", "kalinga": "kalinga",
+    "હસ્તિનાપુર": "hastinapur", "દિલ્હી": "hastinapur", "લાલ કિલ્લો": "hastinapur", "ઇન્દ્રપ્રસ્થ": "hastinapur",
+    "લોથલ": "lothal", "lothal": "lothal",
+    "ધોળાવીરા": "dholavira", "dholavira": "dholavira",
+    "ચિત્તોડગઢ": "chittorgarh", "કુંભલગઢ": "chittorgarh", "મેવાડ": "chittorgarh",
+    "રાયગઢ": "raigad", "શિવાજી": "raigad", "પ્રતાપગઢ": "raigad",
+    "ગોલકોંડા": "golconda", "ગ્વાલિયર": "gwalior",
 }
 
 def build_india_map_html(map_spec):
@@ -248,16 +465,23 @@ def build_india_map_html(map_spec):
         color = str(item.get("color", "#DC2626"))
         states = item.get("states", [])
 
-        ly = 56 + idx * 36
+        ly = 74 + idx * 40
+        short_st = ", ".join(states[:2]) + ("..." if len(states) > 2 else "")
         legend_svg.append(
             f'<rect x="448" y="{ly-14}" width="22" height="22" rx="5" fill="{color}" fill-opacity="0.18" stroke="{color}" stroke-width="1.5"/>'
             f'<text x="459" y="{ly+2}" text-anchor="middle" font-size="14" font-weight="bold" fill="{color}">{symbol}</text>'
-            f'<text x="478" y="{ly-2}" font-size="13" font-weight="bold" fill="#0F172A">{label}</text>'
-            f'<text x="478" y="{ly+13}" font-size="11" fill="#334155">({", ".join(states)})</text>'
+            f'<text x="478" y="{ly-2}" font-size="12.5" font-weight="bold" fill="#0F172A">{label}</text>'
+            f'<text x="478" y="{ly+13}" font-size="10.5" fill="#334155">({short_st})</text>'
         )
 
         for st_name in states:
-            key = _STATE_ALIASES.get(st_name.strip().lower()) or _STATE_ALIASES.get(st_name.strip())
+            clean_s = st_name.strip().lower()
+            key = _STATE_ALIASES.get(clean_s) or _STATE_ALIASES.get(st_name.strip())
+            if not key:
+                for ak, av in _STATE_ALIASES.items():
+                    if ak in clean_s:
+                        key = av
+                        break
             if not key or key not in _INDIA_STATE_COORDS:
                 continue
             bx, by, guj_st = _INDIA_STATE_COORDS[key]
@@ -277,7 +501,7 @@ def build_india_map_html(map_spec):
                     f'<text x="{bx}" y="{by+22}" text-anchor="middle" font-size="10.5" font-weight="bold" fill="#1E293B">{guj_st}</text>'
                 )
 
-    legend_height = max(140, 50 + len(items[:8]) * 36)
+    legend_height = max(160, 65 + len(items[:8]) * 40)
     return f"""
     <div style="background:#FFFFFF; border:2px solid #93C5FD; border-radius:14px; padding:10px; font-family:'Noto Sans Gujarati', sans-serif;">
       <svg width="100%" viewBox="0 0 680 460" xmlns="http://www.w3.org/2000/svg" style="max-height:450px; display:block; margin:auto;">
@@ -292,14 +516,203 @@ def build_india_map_html(map_spec):
         <path d="{india_outline}" fill="#FEF9C3" stroke="#92400E" stroke-width="2.2" stroke-linejoin="round"/>
         {''.join(markers_svg)}
         <rect x="438" y="34" width="232" height="{legend_height}" rx="10" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.5"/>
-        <text x="554" y="50" text-anchor="middle" font-size="13.5" font-weight="bold" fill="#1E3A8A">📌 સંજ્ઞા સૂચિ (Legend)</text>
-        <line x1="448" y1="55" x2="660" y2="55" stroke="#E2E8F0" stroke-width="1"/>
+        <text x="554" y="51" text-anchor="middle" font-size="13.5" font-weight="bold" fill="#1E3A8A">📌 સંજ્ઞા સૂચિ (Legend)</text>
+        <line x1="448" y1="57" x2="660" y2="57" stroke="#E2E8F0" stroke-width="1"/>
         {''.join(legend_svg)}
       </svg>
     </div>
     """
 
-# --- SMART GRADE, SUBJECT, DIAGRAM, MAP & GK DETECTION ---
+# --- ACCURATE GUJARAT MAP COORDINATES (33 DISTRICTS, ZONES, RIVERS, MOUNTAINS & FORTS) ---
+_GUJARAT_DISTRICT_COORDS = {
+    "kutch": (98, 138, "કચ્છ (ભુજ)"),
+    "banaskantha": (232, 86, "બનાસકાંઠા"),
+    "patan": (212, 118, "પાટણ"),
+    "mehsana": (245, 128, "મહેસાણા"),
+    "sabarkantha": (282, 102, "સાબરકાંઠા"),
+    "aravalli": (305, 125, "અરવલ્લી"),
+    "gandhinagar": (262, 148, "ગાંધીનગર"),
+    "ahmedabad": (242, 172, "અમદાવાદ"),
+    "surendranagar": (195, 182, "સુરેન્દ્રનગર"),
+    "morbi": (155, 178, "મોરબી"),
+    "jamnagar": (108, 208, "જામનગર"),
+    "devbhumi dwarka": (74, 218, "દ્વારકા"),
+    "porbandar": (92, 248, "પોરબંદર"),
+    "rajkot": (152, 218, "રાજકોટ"),
+    "botad": (198, 215, "બોટાદ"),
+    "bhavnagar": (212, 248, "ભાવનગર"),
+    "amreli": (172, 258, "અમરેલી"),
+    "junagadh": (128, 265, "જૂનાગઢ"),
+    "gir somnath": (142, 288, "ગીર સોમનાથ"),
+    "kheda": (278, 175, "ખેડા"),
+    "anand": (266, 198, "આણંદ"),
+    "mahisagar": (318, 152, "મહીસાગર"),
+    "panchmahal": (322, 178, "પંચમહાલ"),
+    "dahod": (354, 178, "દાહોદ"),
+    "vadodara": (302, 205, "વડોદરા"),
+    "chhota udaipur": (342, 212, "છોટા ઉદેપુર"),
+    "bharuch": (288, 238, "ભરૂચ"),
+    "narmada": (324, 238, "નર્મદા"),
+    "surat": (292, 268, "સુરત"),
+    "tapi": (326, 268, "તાપી"),
+    "navsari": (292, 295, "નવસારી"),
+    "dang": (322, 298, "ડાંગ"),
+    "valsad": (288, 324, "વલસાડ"),
+    "north gujarat": (255, 112, "ઉત્તર ગુજરાત"),
+    "central gujarat": (295, 182, "મધ્ય ગુજરાત"),
+    "saurashtra": (155, 228, "સૌરાષ્ટ્ર"),
+    "south gujarat": (298, 282, "દક્ષિણ ગુજરાત"),
+    # Rivers, Mountains & Historical Forts
+    "girnar": (128, 265, "ગિરનાર / ઉપરકોટ કિલ્લો"),
+    "pavagadh": (322, 178, "પાવાગઢ / ચાંપાનેર"),
+    "chotila": (175, 202, "ચોટીલા"),
+    "shetrunjay": (205, 255, "શેત્રુંજય"),
+    "arasur": (245, 82, "આરાસુર / ગબ્બર"),
+    "kalo dungar": (95, 118, "કાળો ડુંગર"),
+    "lakhpat": (62, 125, "લખપત કિલ્લો"),
+    "dholavira": (125, 118, "ધોળાવીરા"),
+    "lothal": (235, 192, "લોથલ"),
+    "idargadh": (282, 98, "ઈડરિયો ગઢ"),
+    "dabhoi": (312, 212, "ડભોઈ કિલ્લો"),
+    "saputara": (322, 298, "સાપુતારા"),
+    "narmada river": (295, 238, "નર્મદા નદી"),
+    "tapi river": (298, 268, "તાપી નદી"),
+    "sabarmati river": (252, 165, "સાબરમતી નદી"),
+    "mahi river": (285, 195, "મહી નદી"),
+    "banas river": (222, 95, "બનાસ નદી"),
+    "bhadar river": (135, 245, "ભાદર નદી"),
+}
+
+_GUJARAT_ALIASES = {
+    "કચ્છ": "kutch", "ભુજ": "kutch", "kutch": "kutch", "kachchh": "kutch",
+    "બનાસકાંઠા": "banaskantha", "પાલનપુર": "banaskantha", "banaskantha": "banaskantha",
+    "પાટણ": "patan", "રાણીની વાવ": "patan", "patan": "patan",
+    "મહેસાણા": "mehsana", "mehsana": "mehsana", "mahesana": "mehsana",
+    "સાબરકાંઠા": "sabarkantha", "હિંમતનગર": "sabarkantha", "sabarkantha": "sabarkantha",
+    "અરવલ્લી": "aravalli", "મોડાસા": "aravalli", "aravalli": "aravalli",
+    "ગાંધીનગર": "gandhinagar", "અડાલજ": "gandhinagar", "gandhinagar": "gandhinagar",
+    "અમદાવાદ": "ahmedabad", "ભદ્રનો કિલ્લો": "ahmedabad", "ahmedabad": "ahmedabad",
+    "સુરેન્દ્રનગર": "surendranagar", "surendranagar": "surendranagar",
+    "મોરબી": "morbi", "morbi": "morbi",
+    "જામનગર": "jamnagar", "jamnagar": "jamnagar",
+    "દ્વારકા": "devbhumi dwarka", "દેવભૂમિ દ્વારકા": "devbhumi dwarka", "dwarka": "devbhumi dwarka",
+    "પોરબંદર": "porbandar", "porbandar": "porbandar",
+    "રાજકોટ": "rajkot", "rajkot": "rajkot",
+    "બોટાદ": "botad", "botad": "botad",
+    "ભાવનગર": "bhavnagar", "bhavnagar": "bhavnagar",
+    "અમરેલી": "amreli", "amreli": "amreli",
+    "જૂનાગઢ": "junagadh", "ઉપરકોટ": "girnar", "junagadh": "junagadh",
+    "ગીર સોમનાથ": "gir somnath", "સોમનાથ": "gir somnath", "gir somnath": "gir somnath",
+    "ખેડા": "kheda", "નડિયાદ": "kheda", "kheda": "kheda",
+    "આણંદ": "anand", "anand": "anand",
+    "મહીસાગર": "mahisagar", "લુણાવાડા": "mahisagar", "mahisagar": "mahisagar",
+    "પંચમહાલ": "panchmahal", "ગોધરા": "panchmahal", "panchmahal": "panchmahal",
+    "દાહોદ": "dahod", "dahod": "dahod",
+    "વડોદરા": "vadodara", "vadodara": "vadodara", "baroda": "vadodara",
+    "છોટા ઉદેપુર": "chhota udaipur", "chhota udaipur": "chhota udaipur",
+    "ભરૂચ": "bharuch", "bharuch": "bharuch",
+    "નર્મદા": "narmada river", "રાજપીપળા": "narmada", "narmada": "narmada",
+    "સુરત": "surat", "સુરતનો કિલ્લો": "surat", "surat": "surat",
+    "તાપી": "tapi river", "વ્યારા": "tapi", "tapi": "tapi",
+    "નવસારી": "navsari", "navsari": "navsari",
+    "ડાંગ": "dang", "આહવા": "dang", "dang": "dang",
+    "વલસાડ": "valsad", "valsad": "valsad",
+    "ઉત્તર ગુજરાત": "north gujarat", "north gujarat": "north gujarat",
+    "મધ્ય ગુજરાત": "central gujarat", "central gujarat": "central gujarat",
+    "સૌરાષ્ટ્ર": "saurashtra", "saurashtra": "saurashtra",
+    "દક્ષિણ ગુજરાત": "south gujarat", "south gujarat": "south gujarat",
+    "ગિરનાર": "girnar", "પાવાગઢ": "pavagadh", "ચાંપાનેર": "pavagadh", "ચોટીલા": "chotila",
+    "શેત્રુંજય": "shetrunjay", "આરાસુર": "arasur", "ગબ્બર": "arasur",
+    "કાળો ડુંગર": "kalo dungar", "સાપુતારા": "saputara",
+    "લખપત": "lakhpat", "ધોળાવીરા": "dholavira", "લોથલ": "lothal",
+    "ઈડર": "idargadh", "ઈડરિયો ગઢ": "idargadh", "ડભોઈ": "dabhoi",
+    "સાબરમતી": "sabarmati river", "મહી": "mahi river",
+    "બનાસ": "banas river", "સરસ્વતી": "banas river",
+    "રૂપેણ": "mehsana", "ભાદર": "bhadar river", "લૂણી": "kutch",
+}
+
+def build_gujarat_map_html(map_spec):
+    title = map_spec.get("title", "ગુજરાતનો રાજકીય નકશો (૩૩ જિલ્લા)")
+    items = map_spec.get("items", [])
+
+    gujarat_outline = (
+        "M 42,132 L 92,108 L 146,114 L 166,144 L 136,168 L 168,172 L 204,132 "
+        "L 214,88 L 254,74 L 296,86 L 318,122 L 324,152 L 366,164 L 368,196 "
+        "L 348,224 L 336,256 L 332,298 L 296,338 L 278,334 L 280,272 L 272,232 "
+        "L 250,208 L 234,234 L 214,274 L 162,296 L 114,274 L 72,234 L 86,202 "
+        "L 142,188 L 122,172 L 68,168 Z"
+    )
+
+    offset_count = {}
+    markers_svg = []
+    legend_svg = []
+
+    for idx, item in enumerate(items[:8]):
+        label = str(item.get("label", ""))
+        symbol = str(item.get("symbol", "●"))
+        color = str(item.get("color", "#2563EB"))
+        places = item.get("states", [])
+
+        ly = 74 + idx * 42
+        short_places = ", ".join(places[:2]) + ("..." if len(places) > 2 else "")
+        legend_svg.append(
+            f'<rect x="408" y="{ly-14}" width="22" height="22" rx="5" fill="{color}" fill-opacity="0.18" stroke="{color}" stroke-width="1.5"/>'
+            f'<text x="419" y="{ly+2}" text-anchor="middle" font-size="14" font-weight="bold" fill="{color}">{symbol}</text>'
+            f'<text x="438" y="{ly-2}" font-size="12.5" font-weight="bold" fill="#0F172A">{label}</text>'
+            f'<text x="438" y="{ly+13}" font-size="10.5" fill="#334155">({short_places})</text>'
+        )
+
+        for p_name in places:
+            clean_p = p_name.strip().lower()
+            key = _GUJARAT_ALIASES.get(clean_p) or _GUJARAT_ALIASES.get(p_name.strip())
+            if not key:
+                for alias_k, alias_v in _GUJARAT_ALIASES.items():
+                    if alias_k in clean_p:
+                        key = alias_v
+                        break
+            if not key or key not in _GUJARAT_DISTRICT_COORDS:
+                continue
+
+            bx, by, guj_name = _GUJARAT_DISTRICT_COORDS[key]
+            cnt = offset_count.get(key, 0)
+            offset_count[key] = cnt + 1
+            px = bx + ((cnt % 2) * 14 - (7 if cnt > 0 else 0))
+            py = by + ((cnt // 2) * 14)
+
+            markers_svg.append(
+                f'<circle cx="{px}" cy="{py}" r="9.5" fill="#FFFFFF" stroke="{color}" stroke-width="2"/>'
+                f'<text x="{px}" y="{py+3.5}" text-anchor="middle" font-size="11.5" font-weight="bold" fill="{color}">{symbol}</text>'
+            )
+            if cnt == 0:
+                markers_svg.append(
+                    f'<text x="{bx}" y="{by+19}" text-anchor="middle" font-size="9.5" font-weight="bold" fill="#0F172A">{guj_name}</text>'
+                )
+
+    legend_height = max(175, 65 + len(items[:8]) * 42)
+    return f"""
+    <div style="background:#FFFFFF; border:2px solid #93C5FD; border-radius:14px; padding:10px; font-family:'Noto Sans Gujarati', sans-serif;">
+      <svg width="100%" viewBox="0 0 670 395" xmlns="http://www.w3.org/2000/svg" style="max-height:410px; display:block; margin:auto;">
+        <rect x="0" y="0" width="670" height="395" rx="12" fill="#F0F9FF"/>
+        <text x="335" y="25" text-anchor="middle" font-size="16.5" font-weight="bold" fill="#1E3A8A">{title}</text>
+        <g transform="translate(46, 56)">
+          <circle cx="0" cy="0" r="15" fill="#EFF6FF" stroke="#3B82F6" stroke-width="1.5"/>
+          <line x1="0" y1="-10" x2="0" y2="10" stroke="#1E3A8A" stroke-width="1.5"/>
+          <line x1="-10" y1="0" x2="10" y2="0" stroke="#1E3A8A" stroke-width="1.5"/>
+          <text x="0" y="-18" text-anchor="middle" font-size="9.5" font-weight="bold" fill="#1E3A8A">ઉત્તર</text>
+        </g>
+        <path d="{gujarat_outline}" fill="#DCFCE7" stroke="#15803D" stroke-width="2.2" stroke-linejoin="round"/>
+        <text x="115" y="184" font-size="9.5" fill="#0369A1" font-style="italic">કચ્છનો અખાત</text>
+        <text x="236" y="264" font-size="9.5" fill="#0369A1" font-style="italic">ખંભાતનો અખાત</text>
+        {''.join(markers_svg)}
+        <rect x="398" y="36" width="260" height="{legend_height}" rx="10" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.5"/>
+        <text x="528" y="53" text-anchor="middle" font-size="13" font-weight="bold" fill="#1E3A8A">📌 સંજ્ઞા સૂચિ (વિભાગ / જિલ્લા)</text>
+        <line x1="408" y1="59" x2="648" y2="59" stroke="#E2E8F0" stroke-width="1"/>
+        {''.join(legend_svg)}
+      </svg>
+    </div>
+    """
+
+# --- SMART GRADE, SUBJECT, DIAGRAM, MATH, MAP & GK DETECTION ---
 _GUJ_DIGIT_MAP = str.maketrans("૦૧૨૩૪૫૬૭૮૯", "0123456789")
 
 _SUBJECT_LABELS = {
@@ -319,10 +732,11 @@ _EXPLICIT_SUBJECTS = {
     "social_science": [
         "સામાજિક વિજ્ઞાન", "સામાજિક", "સમાજિક", "social science", "social", "samajik", "samaj",
         "ઇતિહાસ", "ભૂગોળ", "નાગરિક", "ઉદ્યોગ", "ટિસ્કો", "tisco", "જમશેદપુર", "બંધારણ", "સંસદ",
-        "નકશો", "નક્શો", "નકશા", "નક્શા", "નકશાપૂર્તિ", "પાક ઉત્પાદન"
+        "નકશો", "નક્શો", "નકશા", "નક્શા", "નકશાપૂર્તિ", "પાક ઉત્પાદન", "જિલ્લા", "ગુજરાત",
+        "મગધ", "મૌર્ય", "કિલ્લો", "કિલ્લા", "ગઢ", "પ્રદેશ", "લોથલ", "ધોળાવીરા", "પાટલિપુત્ર"
     ],
     "vedic_math": ["વૈદિક ગણિત", "vedic math", "vedic"],
-    "math": ["ગણિત", "ગણીત", "math", "maths", "ganit", "ગણિત ગમ્મત", "ગણિત મેળો", "ભૂમિતિ", "બીજગણિત", "સમીકરણ", "અપૂર્ણાંક"],
+    "math": ["ગણિત", "ગણીત", "math", "maths", "ganit", "ગણિત ગમ્મત", "ગણિત મેળો", "ભૂમિતિ", "બીજગણિત", "સમીકરણ", "અપૂર્ણાંક", "વર્તુળ", "ત્રિકોણ", "ચોરસ"],
     "science": ["વિજ્ઞાન", "science", "vigyan", "vignan", "પ્રકાશસંશ્લેષણ", "કોષ", "વિદ્યુત", "ચુંબક", "બળ", "દબાણ", "અણુ", "પરમાણુ", "મીણબત્તી", "જ્યોત"],
     "environment": ["પર્યાવરણ", "આસપાસ", "environment", "paryavaran", "aaspas", "aaspaas", "evs"],
     "gujarati": ["ગુજરાતી", "gujarati", "કલશોર", "kalshor", "કેકારવ", "kekarav", "કુહૂ", "કહુ", "kuhu", "પલાશ", "પળાશ", "palash", "કાવ્ય", "વ્યાકરણ", "સમાસ", "અલંકાર", "રૂઢિપ્રયોગ"],
@@ -340,12 +754,17 @@ _GK_OR_CA_KEYWORDS = [
 
 _DIAGRAM_KEYWORDS = [
     "આકૃતિ", "નામનિર્દેશ", "નામ નિર્દેશ", "ચિત્ર દોરી", "આકૃતિ દોરી", "આકૃતિ દોરો",
-    "diagram", "labeled diagram", "draw", "sketch"
+    "diagram", "labeled diagram", "draw", "sketch", "કોષ", "વર્તુળ", "ભાગ પાડી", "અપૂર્ણાંક"
 ]
 
 _MAP_KEYWORDS = [
-    "નકશો", "નક્શો", "નકશા", "નક્શા", "નકશાપૂર્તિ", "નક્શાપૂર્તિ", "map", "સંજ્ઞા વડે", "સંગ્ના વદે"
+    "નકશો", "નક્શો", "નકશા", "નક્શા", "નકશાપૂર્તિ", "નક્શાપૂર્તિ", "map", "સંજ્ઞા વડે", "સંગ્ના વદે",
+    "નકશામાં દર્શાવો", "વિભાગો બતાવો", "જિલ્લા દર્શાવો", "કિલ્લા", "મગધ", "પ્રદેશો"
 ]
+
+def wants_math_fraction_visual(text):
+    t = (text or "").lower()
+    return ("વર્તુળ" in t or "circle" in t or "અપૂર્ણાંક" in t) and any(k in t for k in ("ભાગ", "1/", "2/", "3/", "part", "બતાવો", "દર્શાવો"))
 
 def wants_diagram(text):
     t = (text or "").lower()
@@ -498,17 +917,44 @@ def build_vision_pdf_parts(pdf_path, query_text, history_text):
         parts.append(types.Part.from_bytes(data=jpg_bytes, mime_type="image/jpeg"))
     return parts
 
-def render_message_with_visuals(content):
+def render_message_with_visuals(content, image_bytes=None, msg_idx=0, math_svg=None):
+    # Strip any accidental ASCII art code blocks
+    content = re.sub(r"```(?!map_json)[a-zA-Z]*\n[\s\S]*?```", "", content)
+
+    if image_bytes:
+        st.image(image_bytes, caption="🗺️ Nano Banana AI દ્વારા તૈયાર કરેલ પાઠ્યપુસ્તક નકશો / આકૃતિ", use_container_width=True)
+        st.download_button(
+            "⬇️ નકશો / આકૃતિ ડાઉનલોડ કરો",
+            data=image_bytes,
+            file_name=f"palaj_ai_visual_{msg_idx}.png",
+            mime="image/png",
+            key=f"dl_img_{msg_idx}"
+        )
+
+    if math_svg and not image_bytes:
+        html_math = (
+            '<div style="background:#FFFFFF; border-radius:12px; padding:8px; '
+            'text-align:center; border:2px solid #93C5FD; font-family:\'Noto Sans Gujarati\', sans-serif;">'
+            f'{math_svg}</div>'
+        )
+        components.html(html_math, height=345, scrolling=False)
+
     if "```map_json" in content:
         segments = re.split(r"(```map_json[\s\S]*?```)", content)
         for seg in segments:
             if seg.startswith("```map_json"):
-                raw_json = re.sub(r"^```map_json\s*|\s*```$", "", seg).strip()
-                try:
-                    spec = json.loads(raw_json)
-                    components.html(build_india_map_html(spec), height=475, scrolling=False)
-                except Exception:
-                    st.code(raw_json)
+                if not image_bytes:
+                    raw_json = re.sub(r"^```map_json\s*|\s*```$", "", seg).strip()
+                    try:
+                        spec = json.loads(raw_json)
+                        region = str(spec.get("region", "")).lower()
+                        title_low = str(spec.get("title", "")).lower()
+                        if region == "gujarat" or ("ગુજરાત" in title_low and "ભારત" not in title_low and "મગધ" not in title_low):
+                            components.html(build_gujarat_map_html(spec), height=420, scrolling=False)
+                        else:
+                            components.html(build_india_map_html(spec), height=475, scrolling=False)
+                    except Exception:
+                        pass
             elif seg.strip():
                 st.markdown(seg)
         return
@@ -518,12 +964,13 @@ def render_message_with_visuals(content):
         parts = re.split(r"(<svg[\s\S]*?</svg>)", clean, flags=re.IGNORECASE)
         for part in parts:
             if part.strip().lower().startswith("<svg"):
-                html_box = (
-                    '<div style="background:#FFFFFF; border-radius:12px; padding:8px; '
-                    'text-align:center; border:2px solid #93C5FD; font-family:\'Noto Sans Gujarati\', sans-serif;">'
-                    f'{part}</div>'
-                )
-                components.html(html_box, height=355, scrolling=False)
+                if not image_bytes and not math_svg:
+                    html_box = (
+                        '<div style="background:#FFFFFF; border-radius:12px; padding:8px; '
+                        'text-align:center; border:2px solid #93C5FD; font-family:\'Noto Sans Gujarati\', sans-serif;">'
+                        f'{part}</div>'
+                    )
+                    components.html(html_box, height=355, scrolling=False)
             elif part.strip():
                 st.markdown(part)
     else:
@@ -634,6 +1081,11 @@ section[data-testid="stSidebar"] h1, section[data-testid="stSidebar"] h2, sectio
     background: #DBEAFE !important;
     color: #1E3A8A !important;
     -webkit-text-fill-color: #1E3A8A !important;
+}
+[data-testid="stChatMessage"] [data-testid="stDownloadButton"] > button {
+    background-color: #FFFFFF !important;
+    color: #0F172A !important;
+    -webkit-text-fill-color: #0F172A !important;
 }
 
 [data-testid="stBottom"],
@@ -777,7 +1229,7 @@ section[data-testid="stSidebar"] h1, section[data-testid="stSidebar"] h2, sectio
 defaults = {
     "messages": [], "mcq_questions": None, "mcq_user_answers": {}, "mcq_checked": False,
     "draft_text": "", "mic_open": False, "audio_counter": 0, "input_version": 0, "voice_error": "",
-    "ui_lang": "ગુજરાતી"
+    "ui_lang": "ગુજરાતી", "visual_mode": "Nano Banana Full Textbook Image (Auto Backup)"
 }
 for k, v in defaults.items():
     if k not in st.session_state:
@@ -788,9 +1240,16 @@ with st.sidebar:
     st.markdown("### 🎓 સ્માર્ટ AI શિક્ષક")
     raw_keys = (st.secrets.get("GEMINI_API_KEYS") or os.environ.get("GEMINI_API_KEYS") or
                 st.secrets.get("GEMINI_API_KEY") or os.environ.get("GEMINI_API_KEY") or "")
-    api_keys = [k.strip().strip('"\'') for k in str(raw_keys).split(",") if k.strip()]
+    api_keys = [k.strip().strip("\"'") for k in str(raw_keys).split(",") if k.strip()]
 
     model_choice = st.selectbox("🤖 AI મોડેલ:", ACTIVE_MODELS)
+    st.session_state.visual_mode = st.selectbox(
+        "🗺️ નકશા / આકૃતિ મોડ:",
+        [
+            "Nano Banana Full Textbook Image (Auto Backup)",
+            "Only Interactive Vector Map/SVG (Fastest)",
+        ]
+    )
 
     st.markdown("### 🛠️ ક્વિક ટૂલ્સ")
     quick_action = None
@@ -834,9 +1293,14 @@ if quick_action:
     st.session_state.messages.append({"role": "user", "content": prompts[quick_action]})
 
 # --- CHAT HISTORY ---
-for m in st.session_state.messages:
+for idx_m, m in enumerate(st.session_state.messages):
     with st.chat_message(m["role"]):
-        render_message_with_visuals(m["content"])
+        render_message_with_visuals(
+            m["content"],
+            m.get("image_bytes"),
+            msg_idx=idx_m,
+            math_svg=m.get("math_svg")
+        )
 
 # --- INTERACTIVE MCQ ---
 if st.session_state.mcq_questions:
@@ -997,31 +1461,55 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "user"
             for pdf_path in local_pdf_paths:
                 book_page_parts.extend(build_vision_pdf_parts(pdf_path, clean_q, recent_hist))
 
+            # --- VISUAL ENGINE: NANO BANANA IMAGE + MATH FRACTION + BACKUP VECTOR ---
+            generated_img_bytes = None
+            math_svg_code = None
+            is_map_q = wants_map(clean_q)
+            is_math_frac_q = wants_math_fraction_visual(clean_q)
+            is_diag_q = wants_diagram(clean_q)
+            v_mode = st.session_state.visual_mode
+
+            if is_math_frac_q:
+                math_svg_code = build_math_fraction_svg(clean_q)
+
+            if (is_map_q or is_diag_q) and v_mode != "Only Interactive Vector Map/SVG (Fastest)":
+                v_type = "map" if is_map_q else ("math" if is_math_frac_q else "diagram")
+                with st.spinner("🎨 Nano Banana AI દ્વારા પાઠ્યપુસ્તક નકશો / આકૃતિ તૈયાર થઈ રહી છે..."):
+                    generated_img_bytes, img_err = generate_nano_banana_visual(
+                        clean_q,
+                        api_keys,
+                        visual_type=v_type,
+                        reply_lang=reply_lang
+                    )
+                if not generated_img_bytes and img_err:
+                    st.caption(f"ℹ️ ઈમેજ મોડેલ નોંધ: ફ્રી API પર ઈમેજ ક્વોટા મર્યાદિત હોવાથી સ્માર્ટ વેક્ટર નકશો/આકૃતિ બતાવેલ છે.")
+
             visual_instruction = ""
-            if wants_map(clean_q):
+            if is_map_q:
                 visual_instruction = (
-                    "\n6. **ભારતનો નકશો (Map JSON Format):** વિદ્યાર્થીએ નકશા પૂર્તિ પૂછી છે! "
-                    "તમારા જવાબમાં સૌથી પહેલા નીચે મુજબનો એક ચોક્કસ ```map_json બ્લોક આપો, જેનાથી સ્ક્રીન પર ભારતનો અસલી નકશો, સંજ્ઞાઓ અને સંજ્ઞા સૂચિ (Legend) આપમેળે દોરાઈ જશે:\n"
+                    "\n6. **નકશા પૂર્તિ (ASCII Art સખત પ્રતિબંધિત છે):** "
+                    "ક્યારેય ટેક્સ્ટ બોક્સ, `~~~`, `|`, `-`, `•` કે ASCII art વડે નકશો ન દોરો! "
+                    "તમારા જવાબમાં સૌથી પહેલા નીચે મુજબનો એક ચોક્કસ ```map_json બ્લોક આપો:\n"
                     "```map_json\n"
                     "{\n"
-                    "  \"title\": \"ભારતનો નકશો - મુખ્ય પાક ઉત્પાદક રાજ્યો\",\n"
+                    "  \"region\": \"india\",\n"
+                    "  \"title\": \"નકશા પૂર્તિ - પ્રદેશો / કિલ્લા / રાજ્યો\",\n"
                     "  \"items\": [\n"
-                    "    {\"label\": \"ઘઉં\", \"symbol\": \"▲\", \"color\": \"#D97706\", \"states\": [\"પંજાબ\", \"ઉત્તર પ્રદેશ\"]},\n"
-                    "    {\"label\": \"ડાંગર\", \"symbol\": \"●\", \"color\": \"#16A34A\", \"states\": [\"પશ્ચિમ બંગાળ\", \"પંજાબ\"]}\n"
+                    "    {\"label\": \"મગધ દેશ\", \"symbol\": \"★\", \"color\": \"#DC2626\", \"states\": [\"મગધ\", \"વૈશાલી\"]},\n"
+                    "    {\"label\": \"જૂના કિલ્લા\", \"symbol\": \"▲\", \"color\": \"#16A34A\", \"states\": [\"ચિત્તોડગઢ\", \"ગ્વાલિયર\"]}\n"
                     "  ]\n"
                     "}\n"
                     "```\n"
-                    "   - દરેક આઇટમ માટે અલગ સંજ્ઞા (`▲`, `●`, `■`, `★`, `◆`, `✚`) અને અલગ ઘાટો રંગ (`#D97706`, `#16A34A`, `#2563EB`, `#DC2626`, `#7C3AED`, `#0D9488`) વાપરો.\n"
-                    "   - `states` માં ભારતના સાચા રાજ્યોના નામ ગુજરાતીમાં લખો.\n"
-                    "   - `map_json` બ્લોકની નીચે દરેક પાક અને તેના ઉત્પાદક રાજ્યોની મુદ્દાસર સમજૂતી આપો."
+                    "   - જો નકશો ફક્ત **ગુજરાત** (જિલ્લા, નદીઓ, ગુજરાતના કિલ્લા) નો હોય તો `\"region\": \"gujarat\"` રાખો.\n"
+                    "   - જો નકશો **ભારત, મગધ દેશ, પ્રાચીન પ્રદેશો કે ભારતના કિલ્લા** નો હોય તો `\"region\": \"india\"` રાખો.\n"
+                    "   - `map_json` બ્લોકની નીચે દરેક સ્થળની મુદ્દાસર સ્પષ્ટ સમજૂતી આપો."
                 )
-            elif wants_diagram(clean_q):
+            elif is_diag_q and not is_math_frac_q:
                 visual_instruction = (
-                    "\n6. **નામનિર્દેશવાળી આકૃતિ (SVG Diagram):** વિદ્યાર્થીએ આકૃતિ દોરવાનું કહ્યું છે! "
-                    "તમારા જવાબમાં એકદમ સ્પષ્ટ, રંગીન અને સ્વચ્છ **inline `<svg width=\"420\" height=\"320\" viewBox=\"0 0 420 320\" xmlns=\"[http://www.w3.org/2000/svg](http://www.w3.org/2000/svg)\">...</svg>`** કોડ મૂકો.\n"
-                    "   - SVG ની અંદર સફેદ બેકગ્રાઉન્ડ (`<rect width=\"420\" height=\"320\" fill=\"#FFFFFF\"/>`) રાખો.\n"
-                    "   - આકૃતિના દરેક ભાગને રંગીન આકારોથી દોરો, તીર/રેખા (`<line>`) વડે જમણી કે ડાબી બાજુ સ્પષ્ટ નામનિર્દેશન (`<text font-size=\"13\" font-weight=\"bold\" fill=\"#0F172A\">...</text>`) લખો.\n"
-                    "   - આકૃતિની નીચે દરેક ભાગની મુદ્દાસર સમજૂતી આપો."
+                    "\n6. **નામનિર્દેશવાળી આકૃતિ (ફરજિયાત `<svg>` કોડ મૂકો):** "
+                    "તમારા જવાબમાં સૌથી પહેલા એકદમ સ્પષ્ટ, રંગીન અને સ્વચ્છ "
+                    "**`<svg width=\"460\" height=\"340\" viewBox=\"0 0 460 340\" xmlns=\"[http://www.w3.org/2000/svg](http://www.w3.org/2000/svg)\">...</svg>`** કોડ ફરજિયાત લખો! "
+                    "તેમાં સફેદ બેકગ્રાઉન્ડ (`<rect width=\"460\" height=\"340\" fill=\"#FFFFFF\"/>`), મુખ્ય આકૃતિ (દા.ત. વનસ્પતિ કોષની કોષદીવાલ, હરિતકણ, કોષકેન્દ્ર, રસધાની), તીર રેખાઓ (`<line>`) અને ગુજરાતીમાં નામનિર્દેશન (`<text>`) મૂકો, અને તેની નીચે મુદ્દાસર સમજૂતી આપો."
                 )
 
             book_context_instruction = (
@@ -1069,7 +1557,12 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "user"
                                     placeholder.markdown("🗺️ *નકશો / આકૃતિ તૈયાર થઈ રહી છે...* ▌")
                         if temp.strip():
                             placeholder.empty()
-                            render_message_with_visuals(temp)
+                            render_message_with_visuals(
+                                temp,
+                                generated_img_bytes,
+                                msg_idx=len(st.session_state.messages),
+                                math_svg=math_svg_code
+                            )
                             answer_text, success = temp, True
                             break
                     except Exception as e:
@@ -1079,7 +1572,12 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "user"
                                 resp = client.models.generate_content(model=mod, contents=contents)
                                 if resp and resp.text and resp.text.strip():
                                     placeholder.empty()
-                                    render_message_with_visuals(resp.text)
+                                    render_message_with_visuals(
+                                        resp.text,
+                                        generated_img_bytes,
+                                        msg_idx=len(st.session_state.messages),
+                                        math_svg=math_svg_code
+                                    )
                                     answer_text, success = resp.text, True
                                     break
                             except Exception as e2:
@@ -1090,7 +1588,12 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "user"
                     break
 
             if success:
-                st.session_state.messages.append({"role": "assistant", "content": answer_text})
+                st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": answer_text,
+                    "image_bytes": generated_img_bytes,
+                    "math_svg": math_svg_code
+                })
                 if quick_action == "mcq" and st.session_state.mcq_questions is None:
                     if parsed := parse_mcq(answer_text):
                         st.session_state.mcq_questions = parsed
