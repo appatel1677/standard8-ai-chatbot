@@ -103,7 +103,6 @@ def get_pdf_font():
         return None
 
 def svg_to_png_bytes(svg_code):
-    """Convert SVG math/science diagram to PNG bytes so it renders crisply inside PDFs."""
     try:
         import fitz
         doc = fitz.open(stream=svg_code.encode("utf-8"), filetype="svg")
@@ -113,7 +112,6 @@ def svg_to_png_bytes(svg_code):
         return None
 
 def build_pdf_bytes(messages):
-    """Build classroom-ready PDF containing all Gujarati text + embedded Maps, Charts & Images."""
     pdf = FPDF()
     pdf.set_auto_page_break(auto=True, margin=14)
     pdf.set_text_shaping(True)
@@ -136,7 +134,6 @@ def build_pdf_bytes(messages):
         pdf.set_text_color(185, 28, 28) if is_user else pdf.set_text_color(15, 23, 42)
         pdf.cell(0, 7, ("વિદ્યાર્થી / શિક્ષક પ્રશ્ન:" if is_user else "સ્માર્ટ AI શિક્ષક જવાબ:"), ln=True)
 
-        # Embed Map, AI Image, or Math Chart directly inside the PDF!
         vis_bytes = m.get("map_bytes") or m.get("image_bytes")
         if not vis_bytes and m.get("math_svg"):
             vis_bytes = svg_to_png_bytes(m["math_svg"])
@@ -213,7 +210,7 @@ def load_syllabus():
     return {}
 
 # ==============================================================================
-# REAL GIS MAP ENGINE: OPENSTREETMAP NOMINATIM REAL POLYGONS + REAL GEOJSON
+# REAL GIS MAP ENGINE: SUPPORTS FULL MAPS & "ONLY SELECTED" ZOOMED SUBSET MAPS
 # ==============================================================================
 DISTRICT_EN_TO_GUJ = {
     "kachchh": ("કચ્છ", "kutch"), "kutch": ("કચ્છ", "kutch"),
@@ -306,7 +303,7 @@ def fetch_osm_real_boundary(place_query):
     try:
         q_enc = urllib.parse.quote(place_query)
         url = f"https://nominatim.openstreetmap.org/search?q={q_enc}&format=geojson&polygon_geojson=1&limit=1"
-        req = urllib.request.Request(url, headers={"User-Agent": "PalajSmartSchoolTeacherApp/2.1 (education)"})
+        req = urllib.request.Request(url, headers={"User-Agent": "PalajSmartSchoolTeacherApp/2.5 (education)"})
         with urllib.request.urlopen(req, timeout=12) as resp:
             data = json.loads(resp.read().decode("utf-8"))
             if data.get("features"):
@@ -331,7 +328,7 @@ def fetch_osm_point(place_query):
     try:
         q_enc = urllib.parse.quote(place_query)
         url = f"https://nominatim.openstreetmap.org/search?q={q_enc}&format=json&limit=1"
-        req = urllib.request.Request(url, headers={"User-Agent": "PalajSmartSchoolTeacherApp/2.1 (education)"})
+        req = urllib.request.Request(url, headers={"User-Agent": "PalajSmartSchoolTeacherApp/2.5 (education)"})
         with urllib.request.urlopen(req, timeout=8) as resp:
             arr = json.loads(resp.read().decode("utf-8"))
             if arr:
@@ -417,15 +414,19 @@ def _polygon_centroid(pts):
     ys = [p[1] for p in pts]
     return (sum(xs) / len(xs), sum(ys) / len(ys))
 
-def render_textbook_map_png(spec):
+def _query_asks_only_subset(raw_query):
+    q = (raw_query or "").lower()
+    return any(w in q for w in ("ફક્ત", "માત્ર", "fakt", "matra", "only", "જિલ્લાનો", "જિલ્લાઓનો", "રાજ્યોનો"))
+
+def render_textbook_map_png(spec, raw_query=""):
     if not HAS_MPL:
         return None
     font_path = get_pdf_font()
     fp_title = font_manager.FontProperties(fname=font_path, size=14, weight="bold") if font_path else None
     fp_sub = font_manager.FontProperties(fname=font_path, size=10.5, weight="bold") if font_path else None
-    fp_lbl = font_manager.FontProperties(fname=font_path, size=8.0, weight="bold") if font_path else None
+    fp_lbl = font_manager.FontProperties(fname=font_path, size=8.5, weight="bold") if font_path else None
     fp_leg = font_manager.FontProperties(fname=font_path, size=8.8) if font_path else None
-    fp_small = font_manager.FontProperties(fname=font_path, size=7.2, weight="bold") if font_path else None
+    fp_small = font_manager.FontProperties(fname=font_path, size=7.8, weight="bold") if font_path else None
 
     fig = plt.figure(figsize=(13.0, 8.4), dpi=200)
     fig.patch.set_facecolor("#F5F5F4")
@@ -448,7 +449,8 @@ def render_textbook_map_png(spec):
 
     region = str(spec.get("region", "gujarat")).lower()
     highlights = spec.get("highlights", [])
-    hl_map = {str(h.get("place", "")).strip(): h for h in highlights}
+    hl_map = {str(h.get("place", "")).strip(): h for h in highlights if h.get("place")}
+    only_selected = bool(spec.get("only_selected", False)) or (_query_asks_only_subset(raw_query) and len(hl_map) >= 1)
 
     if region == "local":
         search_en = str(spec.get("osm_query_en") or "Mehsana, Gujarat, India").strip()
@@ -485,14 +487,14 @@ def render_textbook_map_png(spec):
             else:
                 pt = fetch_osm_point(en_q)
                 if pt:
-                    map_ax.plot(pt["lon"], pt["lat"], marker="o", markersize=6.5, color="#DC2626", markeredgecolor="#FFFFFF", markeredgewidth=1.2, zorder=6)
-                    map_ax.text(pt["lon"], pt["lat"] + 0.015, guj_lbl, ha="center", va="bottom", color="#0F172A", fontproperties=fp_small, bbox=dict(boxstyle="round,pad=0.15", facecolor="#FFFFFF", edgecolor="#94A3B8", alpha=0.88), zorder=7)
+                    map_ax.plot(pt["lon"], pt["lat"], marker="^", markersize=8.5, color="#DC2626", markeredgecolor="#FFFFFF", markeredgewidth=1.2, zorder=6)
+                    map_ax.text(pt["lon"], pt["lat"] + 0.015, guj_lbl, ha="center", va="bottom", color="#0F172A", fontproperties=fp_small, bbox=dict(boxstyle="round,pad=0.15", facecolor="#FFFFFF", edgecolor="#94A3B8", alpha=0.9), zorder=7)
                     all_x.append(pt["lon"])
                     all_y.append(pt["lat"])
 
         if all_x and all_y:
-            dx = max((max(all_x) - min(all_x)) * 0.12, 0.06)
-            dy = max((max(all_y) - min(all_y)) * 0.12, 0.06)
+            dx = max((max(all_x) - min(all_x)) * 0.14, 0.06)
+            dy = max((max(all_y) - min(all_y)) * 0.14, 0.06)
             map_ax.set_xlim(min(all_x) - dx, max(all_x) + dx)
             map_ax.set_ylim(min(all_y) - dy, max(all_y) + dy)
             map_ax.set_aspect("equal", adjustable="datalim")
@@ -508,31 +510,41 @@ def render_textbook_map_png(spec):
                 raw_name = str(props.get("name") or "").strip()
                 is_india = "india" in raw_name.lower()
                 matched_hl = next((v for k, v in hl_map.items() if k.lower() in raw_name.lower()), None)
+                if only_selected and not matched_hl:
+                    continue
                 fc = "#EF4444" if is_india else (matched_hl.get("color", "#FDE047") if matched_hl else PASTEL_PALETTE[idx_w % len(PASTEL_PALETTE)])
                 polys = _extract_polygons_from_geom(feat.get("geometry") or {})
                 for poly in polys:
-                    map_ax.add_patch(patches.Polygon(poly, closed=True, facecolor=fc, edgecolor="#334155", linewidth=0.55, alpha=0.95))
+                    map_ax.add_patch(patches.Polygon(poly, closed=True, facecolor=fc, edgecolor="#334155", linewidth=0.8, alpha=0.95))
                     for px, py in poly:
                         all_x.append(px)
                         all_y.append(py)
-                if is_india and polys:
+                if (is_india or matched_hl) and polys:
                     cx, cy = _polygon_centroid(max(polys, key=len))
-                    map_ax.text(cx, cy, "ભારત", ha="center", va="center", color="#FFFFFF", fontproperties=fp_lbl)
+                    lbl = matched_hl.get("label") if matched_hl else "ભારત"
+                    map_ax.text(cx, cy, lbl, ha="center", va="center", color="#0F172A", fontproperties=fp_lbl)
             if all_x and all_y:
-                map_ax.set_xlim(-175, 180)
-                map_ax.set_ylim(-58, 84)
+                if only_selected:
+                    dx, dy = max((max(all_x)-min(all_x))*0.15, 2.0), max((max(all_y)-min(all_y))*0.15, 2.0)
+                    map_ax.set_xlim(min(all_x) - dx, max(all_x) + dx)
+                    map_ax.set_ylim(min(all_y) - dy, max(all_y) + dy)
+                else:
+                    map_ax.set_xlim(-175, 180)
+                    map_ax.set_ylim(-58, 84)
                 map_ax.set_aspect("equal", adjustable="datalim")
 
     elif region == "india":
         geo = load_real_geojson("india")
         if geo and geo.get("features"):
             all_x, all_y = [], []
-            for feat in geo["features"]:
+            for idx_st, feat in enumerate(geo["features"]):
                 props = feat.get("properties") or {}
                 raw_name = str(props.get("NAME_1") or props.get("ST_NM") or props.get("state") or "").strip()
                 guj_name, zone = STATE_EN_TO_GUJ.get(raw_name.lower(), (raw_name, "central"))
                 matched_hl = next((v for k, v in hl_map.items() if k in guj_name or guj_name in k or k.lower() in raw_name.lower()), None)
-                fc = matched_hl.get("color", "#FDE047") if matched_hl else ZONE_COLORS.get(zone, "#E2E8F0")
+                if only_selected and not matched_hl:
+                    continue
+                fc = matched_hl.get("color", PASTEL_PALETTE[idx_st % len(PASTEL_PALETTE)]) if matched_hl else ZONE_COLORS.get(zone, "#E2E8F0")
                 ec = "#B91C1C" if matched_hl else "#1E293B"
                 lw = 2.0 if matched_hl else 0.9
 
@@ -546,30 +558,37 @@ def render_textbook_map_png(spec):
                 if biggest:
                     cx, cy = _polygon_centroid(biggest)
                     map_ax.text(cx, cy, guj_name, ha="center", va="center", color="#0F172A", fontproperties=fp_small)
-                    if matched_hl and matched_hl.get("label"):
-                        map_ax.text(cx, cy - 1.1, f"★ {matched_hl.get('label')[:14]}", ha="center", va="center", color="#991B1B", fontproperties=fp_lbl)
-            if spec.get("show_rivers", False):
+                    if matched_hl and matched_hl.get("label") and matched_hl.get("label") != guj_name:
+                        map_ax.text(cx, cy - 0.9, f"▲ {matched_hl.get('label')[:16]}", ha="center", va="center", color="#991B1B", fontproperties=fp_lbl)
+            if spec.get("show_rivers", False) and not only_selected:
                 for r_name, pts in INDIA_RIVERS_GEO:
                     xs, ys = zip(*pts)
                     map_ax.plot(xs, ys, color="#0284C7", linewidth=2.4)
                     map_ax.text(xs[1], ys[1] + 0.5, r_name, ha="center", va="center", color="#0369A1", fontproperties=fp_lbl)
             if all_x and all_y:
-                map_ax.set_xlim(min(all_x) - 1.0, max(all_x) + 1.0)
-                map_ax.set_ylim(min(all_y) - 1.0, max(all_y) + 1.0)
+                dx = max((max(all_x) - min(all_x)) * 0.14, 1.0)
+                dy = max((max(all_y) - min(all_y)) * 0.14, 1.0)
+                map_ax.set_xlim(min(all_x) - dx, max(all_x) + dx)
+                map_ax.set_ylim(min(all_y) - dy, max(all_y) + dy)
                 map_ax.set_aspect("equal", adjustable="datalim")
-                map_ax.text(min(all_x) + 3.5, min(all_y) + 6.0, "અરબ સાગર", ha="center", va="center", color="#0369A1", fontproperties=fp_lbl)
-                map_ax.text(max(all_x) - 8.5, min(all_y) + 6.0, "બંગાળની ખાડી", ha="center", va="center", color="#0369A1", fontproperties=fp_lbl)
+                if not only_selected:
+                    map_ax.text(min(all_x) + 3.5, min(all_y) + 6.0, "અરબ સાગર", ha="center", va="center", color="#0369A1", fontproperties=fp_lbl)
+                    map_ax.text(max(all_x) - 8.5, min(all_y) + 6.0, "બંગાળની ખાડી", ha="center", va="center", color="#0369A1", fontproperties=fp_lbl)
 
     elif region == "gujarat":
         geo = load_real_geojson("gujarat")
         if geo and geo.get("features"):
             all_x, all_y = [], []
-            for feat in geo["features"]:
+            for idx_d, feat in enumerate(geo["features"]):
                 props = feat.get("properties") or {}
                 raw_dist = str(props.get("NAME_2") or props.get("DISTRICT") or props.get("dtname") or props.get("district") or "").strip()
                 guj_name, zone = DISTRICT_EN_TO_GUJ.get(raw_dist.lower(), (raw_dist, "central"))
                 matched_hl = next((v for k, v in hl_map.items() if k in guj_name or guj_name in k or k.lower() in raw_dist.lower()), None)
-                fc = matched_hl.get("color", "#FDE047") if matched_hl else ZONE_COLORS.get(zone, "#E2E8F0")
+
+                if only_selected and not matched_hl:
+                    continue
+
+                fc = matched_hl.get("color", PASTEL_PALETTE[idx_d % len(PASTEL_PALETTE)]) if matched_hl else ZONE_COLORS.get(zone, "#E2E8F0")
                 ec = "#B91C1C" if matched_hl else "#1E293B"
                 lw = 2.2 if matched_hl else 0.95
 
@@ -582,23 +601,29 @@ def render_textbook_map_png(spec):
                         all_y.append(py)
                 if biggest:
                     cx, cy = _polygon_centroid(biggest)
-                    map_ax.text(cx, cy, guj_name, ha="center", va="center", color="#0F172A", fontproperties=fp_small)
+                    map_ax.text(cx, cy, guj_name, ha="center", va="center", color="#0F172A", fontproperties=fp_lbl if only_selected else fp_small)
                     if matched_hl and matched_hl.get("label") and matched_hl.get("label") != guj_name:
-                        map_ax.text(cx, cy - 0.22, f"★ {matched_hl.get('label')[:14]}", ha="center", va="center", color="#991B1B", fontproperties=fp_lbl)
+                        map_ax.text(cx, cy - 0.18, f"▲ {matched_hl.get('label')[:16]}", ha="center", va="center", color="#991B1B", fontproperties=fp_small)
 
             if spec.get("show_rivers", False):
                 for r_name, pts in GUJARAT_RIVERS_GEO:
                     xs, ys = zip(*pts)
+                    if only_selected and all_x and all_y:
+                        if not any((min(all_x) <= x <= max(all_x) and min(all_y) <= y <= max(all_y)) for x, y in pts):
+                            continue
                     map_ax.plot(xs, ys, color="#0284C7", linewidth=2.6)
-                    map_ax.text(xs[1], ys[1] + 0.12, r_name, ha="center", va="center", color="#0369A1", fontproperties=fp_lbl)
+                    map_ax.text(xs[1], ys[1] + 0.10, r_name, ha="center", va="center", color="#0369A1", fontproperties=fp_lbl)
 
             if all_x and all_y:
-                map_ax.set_xlim(min(all_x) - 0.35, max(all_x) + 0.35)
-                map_ax.set_ylim(min(all_y) - 0.35, max(all_y) + 0.35)
+                dx = max((max(all_x) - min(all_x)) * 0.14, 0.25)
+                dy = max((max(all_y) - min(all_y)) * 0.14, 0.25)
+                map_ax.set_xlim(min(all_x) - dx, max(all_x) + dx)
+                map_ax.set_ylim(min(all_y) - dy, max(all_y) + dy)
                 map_ax.set_aspect("equal", adjustable="datalim")
-                map_ax.text(69.5, 22.65, "કચ્છનો અખાત", ha="center", va="center", color="#0369A1", fontproperties=fp_small)
-                map_ax.text(72.35, 21.45, "ખંભાતનો અખાત", ha="center", va="center", color="#0369A1", fontproperties=fp_small)
-                map_ax.text(70.2, 20.45, "અરબ સાગર", ha="center", va="center", color="#0369A1", fontproperties=fp_lbl)
+                if not only_selected:
+                    map_ax.text(69.5, 22.65, "કચ્છનો અખાત", ha="center", va="center", color="#0369A1", fontproperties=fp_small)
+                    map_ax.text(72.35, 21.45, "ખંભાતનો અખાત", ha="center", va="center", color="#0369A1", fontproperties=fp_small)
+                    map_ax.text(70.2, 20.45, "અરબ સાગર", ha="center", va="center", color="#0369A1", fontproperties=fp_lbl)
 
     map_ax.text(0.95, 0.94, "ઉત્તર", transform=map_ax.transAxes, ha="center", va="center", color="#0F172A", fontproperties=fp_lbl)
     map_ax.annotate("", xy=(0.95, 0.91), xytext=(0.95, 0.80), xycoords="axes fraction", textcoords="axes fraction", arrowprops=dict(arrowstyle="->", lw=2.2, color="#0F172A"))
@@ -611,7 +636,7 @@ def render_textbook_map_png(spec):
         "gujarat": [{"color": "#DCE775", "label": "કચ્છ પ્રદેશ"}, {"color": "#F8BBD0", "label": "ઉત્તર ગુજરાત"}, {"color": "#FFCC80", "label": "મધ્ય ગુજરાત"}, {"color": "#CE93D8", "label": "સૌરાષ્ટ્ર"}, {"color": "#80DEEA", "label": "દક્ષિણ ગુજરાત"}],
         "india": [{"color": "#F8BBD0", "label": "ઉત્તર ભારત"}, {"color": "#FFCC80", "label": "મધ્ય ભારત"}, {"color": "#DCE775", "label": "પશ્ચિમ ભારત"}, {"color": "#80DEEA", "label": "પૂર્વ ભારત"}, {"color": "#CE93D8", "label": "દક્ષિણ ભારત"}],
         "world": [{"color": "#EF4444", "label": "ભારત દેશ"}, {"color": "#FDE68A", "label": "વિશ્વના દેશો"}],
-        "local": [{"color": "#FEF9C3", "label": "વિસ્તારની સરહદ"}, {"color": "#BAE6FD", "label": "તાલુકા / ગામો"}, {"color": "#DC2626", "label": "મુખ્ય સ્થળો"}],
+        "local": [{"color": "#FEF9C3", "label": "વિસ્તારની સરહદ"}, {"color": "#BAE6FD", "label": "તાલુકા / ગામો"}, {"color": "#DC2626", "label": "કિલ્લા / સ્થળો"}],
     }
     legend_items = spec.get("legend") or default_legends.get(region, default_legends["gujarat"])
     for idx_l, li in enumerate(legend_items[:9]):
@@ -723,7 +748,6 @@ def wants_any_drawing_or_diagram(text):
     ))
 
 def needs_textbook_vision(text):
-    """Only load heavy 8-page textbook PDF images when user specifically asks for lesson/exercise/chapter."""
     t = (text or "").lower()
     return any(k in t for k in ("પાઠ", "પ્રકરણ", "સ્વાધ્યાય", "સારાંશ", "કવિતા", "વાર્તા", "પુસ્તક", "chapter", "lesson", "exercise", "mcq"))
 
@@ -786,30 +810,10 @@ def detect_default_map_spec(query_text):
     if any(w in q for w in ("ભારત", "india", "મગધ", "દિલ્હી", "મહારાષ્ટ્ર", "રાજસ્થાન", "પંજાબ", "બિહાર", "ગંગા", "હિમાલય")):
         show_riv = any(w in q for w in ("નદી", "nadi", "river", "ગંગા", "યમુના", "ગોદાવરી"))
         return {"region": "india", "header_top": "સામાજિક વિજ્ઞાન - ભારત નકશા પૂર્તિ", "title": "ભારતનો રાજકીય અને ભૌગોલિક નકશો", "show_rivers": show_riv}
-    if any(w in q for w in ("મહેસાણા", "mahesana", "mehsana")):
-        return {
-            "region": "local",
-            "header_top": "સામાજિક વિજ્ઞાન - જિલ્લા નકશા પૂર્તિ",
-            "title": "મહેસાણા જિલ્લો - તાલુકા અને પ્રમુખ સ્થળો",
-            "osm_query_en": "Mahesana District, Gujarat, India",
-            "sub_places_en": [
-                {"en": "Mahesana, Gujarat, India", "guj": "મહેસાણા"},
-                {"en": "Unjha, Mahesana, Gujarat, India", "guj": "ઊંઝા"},
-                {"en": "Visnagar, Mahesana, Gujarat, India", "guj": "વિસનગર"},
-                {"en": "Kadi, Mahesana, Gujarat, India", "guj": "કડી"},
-                {"en": "Vijapur, Mahesana, Gujarat, India", "guj": "વિજાપુર"},
-                {"en": "Vadnagar, Mahesana, Gujarat, India", "guj": "વડનગર"},
-                {"en": "Kheralu, Mahesana, Gujarat, India", "guj": "ખેરાલુ"},
-                {"en": "Becharaji, Mahesana, Gujarat, India", "guj": "બહુચરાજી"},
-                {"en": "Satlasana, Mahesana, Gujarat, India", "guj": "સતલાસણા"},
-                {"en": "Modhera, Mahesana, Gujarat, India", "guj": "મોઢેરા"},
-            ]
-        }
     show_riv = any(w in q for w in ("નદી", "nadi", "river", "નર્મદા", "તાપી", "સાબરમતી"))
-    return {"region": "gujarat", "header_top": "સામાજિક વિજ્ઞાન - નકશા પૂર્તિ", "title": "ગુજરાતનો રાજકીય નકશો (૩૩ જિલ્લા અને ઝોન)", "show_rivers": show_riv}
+    return {"region": "gujarat", "header_top": "સામાજિક વિજ્ઞાન - નકશા પૂર્તિ", "title": "ગુજરાતનો રાજકીય નકશો", "show_rivers": show_riv}
 
 def extract_or_build_map_bytes(content, is_map_query=False, raw_query=""):
-    """Compute map PNG once and return (map_bytes, cleaned_markdown_text)."""
     map_img_bytes = None
     clean_text = content
     if "```map_json" in clean_text:
@@ -819,12 +823,12 @@ def extract_or_build_map_bytes(content, is_map_query=False, raw_query=""):
                 spec = json.loads(m.group(1).strip())
                 if spec.get("region") in ("village", "blo_village"):
                     spec["region"] = "local"
-                map_img_bytes = render_textbook_map_png(spec)
+                map_img_bytes = render_textbook_map_png(spec, raw_query=raw_query)
             except Exception:
-                map_img_bytes = render_textbook_map_png(detect_default_map_spec(raw_query))
+                map_img_bytes = render_textbook_map_png(detect_default_map_spec(raw_query), raw_query=raw_query)
         clean_text = re.sub(r"```map_json[\s\S]*?```", "", clean_text)
     if is_map_query and not map_img_bytes:
-        map_img_bytes = render_textbook_map_png(detect_default_map_spec(raw_query))
+        map_img_bytes = render_textbook_map_png(detect_default_map_spec(raw_query), raw_query=raw_query)
     clean_text = re.sub(r"```(?!svg|xml|html)[a-zA-Z]*\n[\s\S]*?```", "", clean_text)
     return map_img_bytes, clean_text
 
@@ -841,7 +845,7 @@ def render_message_with_visuals(content, image_bytes=None, msg_idx=0, math_svg=N
     if final_img:
         cap = "🗺️ પાઠ્યપુસ્તક શૈલીનો અસલી ભૌગોલિક સરહદો સાથેનો નકશો" if map_img_bytes else "🎨 AI દ્વારા તૈયાર કરેલ ચિત્ર / આકૃતિ"
         st.image(final_img, caption=cap, use_container_width=True)
-        st.download_button(
+        _ = st.download_button(
             "⬇️ નકશો / ચિત્ર ડાઉનલોડ કરો (PNG)",
             data=final_img,
             file_name=f"palaj_{'map' if map_img_bytes else 'art'}_{msg_idx}.png",
@@ -865,29 +869,36 @@ def render_message_with_visuals(content, image_bytes=None, msg_idx=0, math_svg=N
 
 syllabus_data = load_syllabus()
 
-# --- RESPONSIVE DESKTOP + MOBILE UI CSS ---
+# --- ZERO-HORIZONTAL-SCROLL & SIDEBAR-AWARE CSS ---
 st.markdown("""
 <style>
+html, body, [data-testid="stAppViewContainer"], .main {
+    overflow-x: hidden !important;
+    max-width: 100% !important;
+}
 .block-container {
     max-width: 820px !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
     padding-top: 2.2rem !important;
-    padding-bottom: 7.5rem !important;
-    padding-left: 0.9rem !important;
-    padding-right: 0.9rem !important;
+    padding-bottom: 6.5rem !important;
+    padding-left: 0.75rem !important;
+    padding-right: 0.75rem !important;
 }
 .slim-header {
     background: linear-gradient(135deg, #1E3A8A 0%, #2563EB 55%, #0284C7 100%);
     color: #FFFFFF;
-    padding: 12px 16px;
+    padding: 12px 14px;
     border-radius: 14px;
     text-align: center;
-    font-size: 1.08rem;
+    font-size: 1.05rem;
     font-weight: 700;
-    letter-spacing: 0.2px;
     box-shadow: 0 4px 12px rgba(37, 99, 235, 0.22);
     border: 1px solid rgba(255, 255, 255, 0.2);
     margin-top: 4px;
     margin-bottom: 14px;
+    width: 100%;
+    box-sizing: border-box;
 }
 .book-badge {
     display: inline-block;
@@ -900,60 +911,105 @@ st.markdown("""
     font-weight: 600;
     margin-bottom: 8px;
 }
+
+/* Bottom Bar: Respects Sidebar on Desktop & Fits 100% on Mobile */
 [data-testid="stBottom"] > div {
-    padding-left: 0.5rem !important;
-    padding-right: 0.5rem !important;
+    max-width: 820px !important;
+    width: 100% !important;
+    margin: 0 auto !important;
+    padding: 6px 10px !important;
+    box-sizing: border-box !important;
+}
+[data-testid="stBottom"] [data-testid="stHorizontalBlock"] {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    align-items: flex-end !important;
+    gap: 6px !important;
+    width: 100% !important;
+}
+[data-testid="stBottom"] [data-testid="stHorizontalBlock"] > [data-testid="column"]:nth-child(1),
+[data-testid="stBottom"] [data-testid="stHorizontalBlock"] > [data-testid="column"]:nth-child(3),
+[data-testid="stBottom"] [data-testid="stHorizontalBlock"] > [data-testid="column"]:nth-child(4) {
+    flex: 0 0 42px !important;
+    width: 42px !important;
+    min-width: 42px !important;
+    max-width: 42px !important;
+}
+[data-testid="stBottom"] [data-testid="stHorizontalBlock"] > [data-testid="column"]:nth-child(2) {
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
 }
 [data-testid="stBottom"] textarea {
-    min-height: 48px !important;
-    max-height: 150px !important;
+    min-height: 44px !important;
+    max-height: 140px !important;
     overflow-y: auto !important;
     font-size: 15px !important;
-    line-height: 1.4 !important;
+    line-height: 1.35 !important;
     border-radius: 12px !important;
-    padding: 8px 10px !important;
+    padding: 9px 10px !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
 }
 [data-testid="stBottom"] button {
-    min-width: 40px !important;
+    width: 42px !important;
+    min-width: 42px !important;
+    max-width: 42px !important;
+    height: 44px !important;
     min-height: 44px !important;
+    padding: 0 !important;
     font-size: 16px !important;
     border-radius: 10px !important;
-    padding: 0 8px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+}
+[data-testid="stBottom"] [data-testid="stPopover"] > div > button svg {
+    display: none !important;
 }
 @media (max-width: 640px) {
     .block-container {
-        padding-top: 1.6rem !important;
-        padding-left: 0.55rem !important;
-        padding-right: 0.55rem !important;
-        padding-bottom: 7.2rem !important;
+        padding-top: 1.5rem !important;
+        padding-left: 0.45rem !important;
+        padding-right: 0.45rem !important;
     }
     .slim-header {
-        font-size: 0.95rem !important;
-        padding: 10px 12px !important;
-    }
-    [data-testid="stBottom"] [data-testid="stHorizontalBlock"] {
-        gap: 0.25rem !important;
-        flex-wrap: nowrap !important;
-    }
-    [data-testid="stBottom"] [data-testid="column"] {
-        min-width: 0 !important;
-    }
-    [data-testid="stBottom"] button {
-        min-width: 36px !important;
-        min-height: 42px !important;
-        font-size: 15px !important;
-        padding: 0 4px !important;
+        font-size: 0.92rem !important;
+        padding: 10px 8px !important;
     }
 }
 </style>
 """, unsafe_allow_html=True)
 
-defaults = {"messages": [], "mcq_questions": None, "mcq_user_answers": {}, "mcq_checked": False, "draft_text": "", "mic_open": False, "audio_counter": 0, "input_version": 0}
+defaults = {
+    "messages": [],
+    "chat_sessions": [],
+    "active_session_idx": None,
+    "mcq_questions": None,
+    "mcq_user_answers": {},
+    "mcq_checked": False,
+    "draft_text": "",
+    "mic_open": False,
+    "audio_counter": 0,
+    "input_version": 0,
+}
 for k, v in defaults.items():
     if k not in st.session_state:
         st.session_state[k] = v
 
-# --- SIDEBAR: PDF DOWNLOAD (WITH MAPS & CHARTS) + NEW CHAT ---
+def sync_current_session():
+    if not st.session_state.messages:
+        return
+    first_q = next((m["content"].strip() for m in st.session_state.messages if m["role"] == "user" and m["content"].strip()), "નવી ચર્ચા")
+    title = (first_q[:38] + "...") if len(first_q) > 38 else first_q
+    idx = st.session_state.active_session_idx
+    if idx is not None and 0 <= idx < len(st.session_state.chat_sessions):
+        st.session_state.chat_sessions[idx] = {"title": title, "messages": list(st.session_state.messages)}
+    else:
+        st.session_state.chat_sessions.insert(0, {"title": title, "messages": list(st.session_state.messages)})
+        st.session_state.active_session_idx = 0
+
+# --- SIDEBAR: CHAT HISTORY WITH REAL SENTENCE TITLES + PDF DOWNLOAD ---
 with st.sidebar:
     st.markdown("### 🎓 સ્માર્ટ AI શિક્ષક")
     raw_keys = st.secrets.get("GEMINI_API_KEYS") or os.environ.get("GEMINI_API_KEYS") or st.secrets.get("GEMINI_API_KEY") or os.environ.get("GEMINI_API_KEY") or ""
@@ -968,12 +1024,31 @@ with st.sidebar:
     if c2.button("💡 ઉદાહરણ", use_container_width=True): quick_action = "easy_example"
 
     st.divider()
-    if st.button("🗑️ નવી ચેટ", use_container_width=True):
-        st.session_state.update({"messages": [], "mcq_questions": None, "mcq_user_answers": {}, "mcq_checked": False, "draft_text": "", "input_version": st.session_state.input_version + 1})
+    if st.button("➕ નવી ચેટ (New Chat)", use_container_width=True):
+        sync_current_session()
+        st.session_state.messages = []
+        st.session_state.active_session_idx = None
+        st.session_state.mcq_questions = None
+        st.session_state.mcq_user_answers = {}
+        st.session_state.mcq_checked = False
+        st.session_state.draft_text = ""
+        st.session_state.input_version += 1
         st.rerun()
 
+    if st.session_state.chat_sessions:
+        st.markdown("#### 📜 ચેટ ઇતિહાસ")
+        for s_idx, sess in enumerate(st.session_state.chat_sessions[:12]):
+            if st.button(f"💬 {sess['title']}", key=f"hist_sess_{s_idx}", use_container_width=True):
+                sync_current_session()
+                st.session_state.messages = list(sess["messages"])
+                st.session_state.active_session_idx = s_idx
+                st.session_state.mcq_questions = None
+                st.session_state.mcq_checked = False
+                st.rerun()
+
     if st.session_state.messages:
-        st.download_button(
+        st.divider()
+        _ = st.download_button(
             "📄 PDF નોટ્સ (નકશા/ચાર્ટ સહિત)",
             data=build_pdf_bytes(st.session_state.messages),
             file_name="palaj_classroom_notes.pdf",
@@ -983,11 +1058,46 @@ with st.sidebar:
 
 st.markdown('<div class="slim-header">📚 Standard 3 to 8 Smart AI Palaj Teacher</div>', unsafe_allow_html=True)
 
+# --- PERSISTENT BOTTOM INPUT BAR ---
+attached_file = st.session_state.get("bottom_uploader") or st.session_state.get("bottom_camera")
+with getattr(st, "bottom", st.container()):
+    col_plus, col_in, col_mic, col_send = st.columns([1, 8, 1, 1], vertical_alignment="bottom")
+    with col_plus:
+        with st.popover("➕"):
+            _ = st.file_uploader("📁 ગેલેરી / PDF પસંદ કરો", key="bottom_uploader")
+            _ = st.camera_input("📸 કેમેરાથી ફોટો પાડો", key="bottom_camera")
+    with col_in:
+        user_text = st.text_area(
+            "પ્રશ્ન...",
+            value=st.session_state.draft_text,
+            key=f"chat_box_{st.session_state.input_version}",
+            height=46,
+            placeholder="ASK PALAJ TEACHER",
+            label_visibility="collapsed"
+        )
+        st.session_state.draft_text = user_text
+    with col_mic:
+        if st.button("🎤", key="real_mic_btn", help="બોલીને લખો"):
+            st.session_state.mic_open = not st.session_state.mic_open
+            st.rerun()
+    with col_send:
+        send_clicked = st.button("➤", type="primary", key="real_send_btn", help="મોકલો")
+
+if send_clicked and (user_text.strip() or attached_file):
+    st.session_state.messages.append({"role": "user", "content": user_text.strip() or "[કેમેરા / ફાઈલ સંલગ્ન છે]"})
+    sync_current_session()
+    st.session_state.draft_text = ""
+    st.session_state.input_version += 1
+    st.rerun()
+
 if quick_action:
     prompts = {"summary": "છેલ્લી ચર્ચા મુજબના પાઠનો મુદ્દાસર સારાંશ આપો.", "exercise": "છેલ્લી ચર્ચા મુજબના પાઠના સ્વાધ્યાયના પ્રશ્નો અને જવાબો આપો.", "mcq": "છેલ્લી ચર્ચા મુજબ ૫ MCQ બનાવો. ફોર્મેટ:\nપ્રશ્ન 1: પ્રશ્ન?\nA. ...\nB. ...\nC. ...\nD. ...\nસાચો જવાબ: B\nસમજૂતી: ...", "easy_example": "છેલ્લી ચર્ચા મુજબના વિષયના સરળ ઉદાહરણો આપો."}
     if quick_action == "mcq":
-        st.session_state.update({"mcq_questions": None, "mcq_user_answers": {}, "mcq_checked": False})
+        st.session_state.mcq_questions = None
+        st.session_state.mcq_user_answers = {}
+        st.session_state.mcq_checked = False
     st.session_state.messages.append({"role": "user", "content": prompts[quick_action]})
+    sync_current_session()
 
 for idx_m, m in enumerate(st.session_state.messages):
     with st.chat_message(m["role"]):
@@ -1029,8 +1139,6 @@ if st.session_state.mic_open:
                 st.session_state.input_version += 1
             st.rerun()
 
-# --- ATTACHMENT PREVIEW ---
-attached_file = st.session_state.get("bottom_uploader") or st.session_state.get("bottom_camera")
 if attached_file:
     with st.container(border=True):
         c_img, c_txt, c_rm = st.columns([1, 6, 1])
@@ -1040,40 +1148,13 @@ if attached_file:
             c_img.markdown("📎")
         c_txt.caption(f"📎 સંલગ્ન ફાઈલ / કેમેરા ફોટો: {getattr(attached_file, 'name', 'Camera Photo')}")
         if c_rm.button("❌", key="rm_att_btn"):
-            st.session_state.pop("bottom_uploader", None)
-            st.session_state.pop("bottom_camera", None)
+            if "bottom_uploader" in st.session_state:
+                del st.session_state["bottom_uploader"]
+            if "bottom_camera" in st.session_state:
+                del st.session_state["bottom_camera"]
             st.rerun()
 
-# --- MOBILE & DESKTOP RESPONSIVE CHAT INPUT BAR ---
-with getattr(st, "bottom", st.container()):
-    col_plus, col_in, col_mic, col_send = st.columns([1.1, 8.7, 1.1, 1.1], vertical_alignment="bottom")
-    with col_plus:
-        with st.popover("➕", use_container_width=True):
-            st.file_uploader("📁 ગેલેરી / PDF પસંદ કરો", key="bottom_uploader")
-            st.camera_input("📸 કેમેરાથી ફોટો પાડો", key="bottom_camera")
-    with col_in:
-        user_text = st.text_area(
-            "પ્રશ્ન...",
-            value=st.session_state.draft_text,
-            key=f"chat_box_{st.session_state.input_version}",
-            height=52,
-            placeholder="ASK PALAJ TEACHER",
-            label_visibility="collapsed"
-        )
-        st.session_state.draft_text = user_text
-    with col_mic:
-        if st.button("🎤", key="real_mic_btn", help="બોલીને લખો", use_container_width=True):
-            st.session_state.mic_open = not st.session_state.mic_open
-            st.rerun()
-    with col_send:
-        send_clicked = st.button("➤", type="primary", key="real_send_btn", help="મોકલો", use_container_width=True)
-
-if send_clicked and (user_text.strip() or attached_file):
-    st.session_state.messages.append({"role": "user", "content": user_text.strip() or "[કેમેરા / ફાઈલ સંલગ્ન છે]"})
-    st.session_state.draft_text = ""
-    st.session_state.input_version += 1
-    st.rerun()
-
+# --- GENERATE ASSISTANT RESPONSE ---
 if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
     clean_q = st.session_state.messages[-1]["content"].strip()
     with st.chat_message("assistant"):
@@ -1088,8 +1169,10 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "user"
                     user_att_parts.append(types.Part.from_bytes(data=fb, mime_type="application/pdf"))
                 else:
                     user_att_parts.append(Image.open(io.BytesIO(fb)))
-            st.session_state.pop("bottom_uploader", None)
-            st.session_state.pop("bottom_camera", None)
+            if "bottom_uploader" in st.session_state:
+                del st.session_state["bottom_uploader"]
+            if "bottom_camera" in st.session_state:
+                del st.session_state["bottom_camera"]
 
             grade, subject, local_pdf_paths = resolve_grade_subject_and_pdfs(clean_q, syllabus_data)
             is_map_q = wants_map(clean_q)
@@ -1109,14 +1192,15 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "user"
             visual_instruction = ""
             if is_map_q:
                 visual_instruction = (
-                    "\n**મહત્વની સૂચના:** પ્રશ્ન કયા વિસ્તારનો છે તે મુજબ સાચો `region` પસંદ કરીને સૌથી પહેલા આ ```map_json બ્લોક ફરજિયાત આપો (આ સિસ્ટમ OpenStreetMap GIS પરથી અસલી ભૌગોલિક સરહદ દોરે છે):\n"
-                    "- જો **ભારત** (રાજ્યો, નદીઓ, પાક, ઉદ્યોગો, મગધ, ઐતિહાસિક સ્થળો) નો નકશો હોય તો `\"region\": \"india\"` રાખો.\n"
-                    "- જો **વિશ્વ** (ખંડો, મહાસાગરો, દેશો) નો નકશો હોય તો `\"region\": \"world\"` રાખો.\n"
-                    "- જો **કોઈ જિલ્લો, તાલુકો, શહેર કે ગામ** (જેમ કે મહેસાણા જિલ્લો, મહેસાણા તાલુકો, ઊંઝા, પાલજ) નો નકશો હોય તો `\"region\": \"local\"` રાખો, `\"osm_query_en\"` માં તે વિસ્તારનું અંગ્રેજી નામ (દા.ત. `\"Mahesana District, Gujarat, India\"`) આપો અને `\"sub_places_en\"` માં અંદરના 6 થી 10 તાલુકા/ગામો/સ્થળોના `{\"en\": \"...\", \"guj\": \"...\"}` આપો.\n"
-                    "- જો **સમગ્ર ગુજરાત** (૩૩ જિલ્લા, નદીઓ, પાક, ઉદ્યોગો) નો નકશો હોય તો `\"region\": \"gujarat\"` રાખો.\n"
+                    "\n**મહત્વની સૂચના:** પ્રશ્ન મુજબ સાચો ```map_json બ્લોક ફરજિયાત આપો:\n"
+                    "- જો વપરાશકર્તાએ **'ફક્ત / માત્ર / only' અમુક જિલ્લા કે રાજ્યો** (દા.ત. ફક્ત મહેસાણા, બનાસકાંઠા, પાટણ અને સુરેન્દ્રનગર) પૂછ્યા હોય, તો `\"only_selected\": true` રાખો અને `\"highlights\"` માં ફક્ત તે જ જિલ્લાઓ/રાજ્યોના ગુજરાતી નામ આપો — જેથી નકશો આખા ગુજરાતને બદલે ફક્ત તે પસંદ કરેલા જિલ્લાઓ પર જ ઝૂમ થઈને દોરાય!\n"
+                    "- જો **સમગ્ર ગુજરાત** (૩૩ જિલ્લા, કિલ્લાઓ, નદીઓ, પાક) પૂછ્યું હોય તો `\"region\": \"gujarat\", \"only_selected\": false` રાખો.\n"
+                    "- જો **ભારત** (રાજ્યો, નદીઓ, મગધ, પાક, કિલ્લાઓ) પૂછ્યું હોય તો `\"region\": \"india\"` રાખો.\n"
+                    "- જો **વિશ્વ** (ખંડો, દેશો) પૂછ્યું હોય તો `\"region\": \"world\"` રાખો.\n"
+                    "- જો **કોઈ એક જિલ્લો, તાલુકો કે ગામ** (જેમ કે જૂનાગઢ જિલ્લો, મહેસાણા તાલુકો, પાલજ) પૂછ્યું હોય તો `\"region\": \"local\"` રાખો, `\"osm_query_en\"` માં અંગ્રેજી નામ અને `\"sub_places_en\"` માં અંદરના ગામો/કિલ્લા/સ્થળો આપો.\n"
                     "```map_json\n"
-                    '{"region": "local", "header_top": "સામાજિક વિજ્ઞાન - નકશા પૂર્તિ", "title": "નકશાનું શીર્ષક", "osm_query_en": "Mahesana District, Gujarat, India", "sub_places_en": [{"en": "Mahesana, Gujarat", "guj": "મહેસાણા"}], "show_rivers": false, "highlights": [{"place": "સ્થળ", "label": "લેબલ", "color": "#FDE047"}], "legend": [{"color": "#FEF9C3", "label": "વિસ્તારની સરહદ"}, {"color": "#DC2626", "label": "મુખ્ય સ્થળો"}]}\n'
-                    "```\nઅને નીચે પ્રશ્નમાં પૂછેલા તમામ સ્થળો/ગામડા/નદીઓ/પાક/ઉદ્યોગોની મુદ્દાસર વિગતવાર સમજૂતી આપો."
+                    '{"region": "gujarat", "only_selected": false, "header_top": "સામાજિક વિજ્ઞાન - નકશા પૂર્તિ", "title": "નકશાનું શીર્ષક", "show_rivers": false, "highlights": [{"place": "જૂનાગઢ", "label": "ઉપરકોટ કિલ્લો", "color": "#FDE047"}], "legend": [{"color": "#FDE047", "label": "ઉપરકોટ કિલ્લો"}]}\n'
+                    "```\nઅને નીચે પ્રશ્નમાં પૂછેલા સ્થળો/કિલ્લાઓની મુદ્દાસર વિગતવાર સમજૂતી આપો."
                 )
             elif is_drawing_q and generated_img_bytes:
                 visual_instruction = (
@@ -1177,6 +1261,7 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "user"
                     "is_map_query": is_map_q,
                     "raw_query": clean_q
                 })
+                sync_current_session()
                 if quick_action == "mcq" and st.session_state.mcq_questions is None:
                     if parsed := parse_mcq(answer_text):
                         st.session_state.mcq_questions = parsed
