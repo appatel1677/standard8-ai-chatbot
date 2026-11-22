@@ -433,8 +433,18 @@ def _query_asks_only_subset(raw_query):
     return any(w in q for w in ("ફક્ત", "માત્ર", "fakt", "matra", "only", "જિલ્લાનો", "જિલ્લાઓનો", "રાજ્યોનો"))
 
 def render_textbook_map_png(spec, raw_query=""):
+    """Wrapper: nakshu na bane to karan session_state['map_err'] ma mukay (UI ma dekhay)."""
+    st.session_state["map_err"] = ""
     if not HAS_MPL:
+        st.session_state["map_err"] = "matplotlib install nathi. requirements.txt ma `matplotlib` umero ane app reboot karo."
         return None
+    try:
+        return _render_textbook_map_png_impl(spec, raw_query)
+    except Exception as e:
+        st.session_state["map_err"] = f"નકશો દોરવામાં ભૂલ: {str(e)[:160]}"
+        return None
+
+def _render_textbook_map_png_impl(spec, raw_query=""):
     font_path = get_pdf_font()
     fp_title = font_manager.FontProperties(fname=font_path, size=14, weight="bold") if font_path else None
     fp_sub = font_manager.FontProperties(fname=font_path, size=10.5, weight="bold") if font_path else None
@@ -639,6 +649,10 @@ def render_textbook_map_png(spec, raw_query=""):
                     map_ax.text(72.35, 21.45, "ખંભાતનો અખાત", ha="center", va="center", color="#0369A1", fontproperties=fp_small)
                     map_ax.text(70.2, 20.45, "અરબ સાગર", ha="center", va="center", color="#0369A1", fontproperties=fp_lbl)
 
+    if not map_ax.patches:
+        st.session_state["map_err"] = "નકશાનો ડેટા (GitHub / OpenStreetMap) લોડ થઈ શક્યો નથી. ઇન્ટરનેટ તપાસી ફરી પ્રયાસ કરો."
+        map_ax.text(0.5, 0.5, "નકશાનો ડેટા લોડ થયો નથી", transform=map_ax.transAxes, ha="center", va="center", color="#B91C1C", fontproperties=fp_sub)
+
     map_ax.text(0.95, 0.94, "ઉત્તર", transform=map_ax.transAxes, ha="center", va="center", color="#0F172A", fontproperties=fp_lbl)
     map_ax.annotate("", xy=(0.95, 0.91), xytext=(0.95, 0.80), xycoords="axes fraction", textcoords="axes fraction", arrowprops=dict(arrowstyle="->", lw=2.2, color="#0F172A"))
 
@@ -745,6 +759,7 @@ def wants_map(text):
     return any(kw in t for kw in (
         "નકશો", "નક્શો", "નકશા", "નક્શા", "નકશાપૂર્તિ", "naksho", "naksha", "map",
         "સંજ્ઞા વડે", "નકશામાં દર્શાવો", "કિલ્લા", "મગધ", "પ્રદેશો",
+        "રાજ્યો", "રાજ્યોના", "જિલ્લાઓ", "જિલ્લાના", "રાજધાની", "ખંડો", "મહાસાગર", "દેશો", "પર્વત", "સરોવર", "states of", "districts of",
         "રાજકીય", "ભૌગોલિક", "ગામનો", "gamno", "gamda", "ખેત ઉત્પાદન", "ઉદ્યોગો", "નદીઓ", "મતદાર", "વસ્તી ગણતરી", "blo"
     ))
 
@@ -866,6 +881,9 @@ def render_message_with_visuals(content, image_bytes=None, msg_idx=0, math_svg=N
             mime="image/png",
             key=f"dl_img_{msg_idx}"
         )
+
+    if is_map_query and not map_img_bytes:
+        st.warning("🗺️ નકશો બતાવી શકાયો નથી. " + (st.session_state.get("map_err") or "ફરી એકવાર પ્રયાસ કરો."))
 
     if math_svg and not final_img:
         components.html(f'<div style="background:#FFFFFF; border-radius:12px; padding:8px; text-align:center; border:2px solid #93C5FD;">{math_svg}</div>', height=330, scrolling=False)
@@ -1019,6 +1037,12 @@ div[data-testid="stVerticalBlock"]:has(> div.element-container #palaj-input-anch
 div[data-testid="stVerticalBlock"]:has(> div.element-container #palaj-input-anchor) [data-testid="stPopover"] > div > button svg {
     display: none !important;
 }
+/* Streamlit nu niche-jamna khuna ma ave tevu crown/Manage badge send button upar na aave */
+@media (max-width: 820px) {
+    div[data-testid="stVerticalBlock"]:has(> div.element-container #palaj-input-anchor) {
+        padding-right: 58px !important;
+    }
+}
 @media (max-width: 640px) {
     .block-container {
         padding-top: 1.5rem !important;
@@ -1101,13 +1125,19 @@ with st.sidebar:
 
     if st.session_state.messages:
         st.divider()
-        _ = st.download_button(
-            "📄 PDF નોટ્સ (નકશા/ચાર્ટ સહિત)",
-            data=build_pdf_bytes(st.session_state.messages),
-            file_name="palaj_classroom_notes.pdf",
-            mime="application/pdf",
-            **S_DL
-        )
+        try:
+            _pdf_data = build_pdf_bytes(st.session_state.messages)
+        except Exception as _e:
+            _pdf_data = None
+            st.caption(f"PDF બની શક્યું નહીં: {str(_e)[:80]}")
+        if _pdf_data:
+            _ = st.download_button(
+                "📄 PDF નોટ્સ (નકશા/ચાર્ટ સહિત)",
+                data=_pdf_data,
+                file_name="palaj_classroom_notes.pdf",
+                mime="application/pdf",
+                **S_DL
+            )
 
 st.markdown('<div class="slim-header">📚 Standard 3 to 8 Smart AI Palaj Teacher</div>', unsafe_allow_html=True)
 
