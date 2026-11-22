@@ -1,6 +1,6 @@
 ﻿import streamlit as st
 import streamlit.components.v1 as components
-import json, os, io, re, math, urllib.request, urllib.parse
+import json, os, io, re, math, inspect, urllib.request, urllib.parse
 from PIL import Image
 from fpdf import FPDF
 
@@ -27,6 +27,20 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="collapsed"
 )
+
+def _stretch(fn):
+    """Streamlit ni juni/navi version banne ma chale: use_container_width ke width='stretch'."""
+    try:
+        p = inspect.signature(fn).parameters
+        if "width" in p and p["width"].default == "content":
+            return {"width": "stretch"}
+    except Exception:
+        pass
+    return {"use_container_width": True}
+
+S_BTN = _stretch(st.button)
+S_DL = _stretch(st.download_button)
+S_IMG = _stretch(st.image)
 
 ACTIVE_MODELS = [
     "gemini-2.5-flash",
@@ -303,7 +317,7 @@ def fetch_osm_real_boundary(place_query):
     try:
         q_enc = urllib.parse.quote(place_query)
         url = f"https://nominatim.openstreetmap.org/search?q={q_enc}&format=geojson&polygon_geojson=1&limit=1"
-        req = urllib.request.Request(url, headers={"User-Agent": "PalajSmartSchoolTeacherApp/2.5 (education)"})
+        req = urllib.request.Request(url, headers={"User-Agent": "PalajSmartSchoolTeacherApp/2.8 (education)"})
         with urllib.request.urlopen(req, timeout=12) as resp:
             data = json.loads(resp.read().decode("utf-8"))
             if data.get("features"):
@@ -328,7 +342,7 @@ def fetch_osm_point(place_query):
     try:
         q_enc = urllib.parse.quote(place_query)
         url = f"https://nominatim.openstreetmap.org/search?q={q_enc}&format=json&limit=1"
-        req = urllib.request.Request(url, headers={"User-Agent": "PalajSmartSchoolTeacherApp/2.5 (education)"})
+        req = urllib.request.Request(url, headers={"User-Agent": "PalajSmartSchoolTeacherApp/2.8 (education)"})
         with urllib.request.urlopen(req, timeout=8) as resp:
             arr = json.loads(resp.read().decode("utf-8"))
             if arr:
@@ -844,7 +858,7 @@ def render_message_with_visuals(content, image_bytes=None, msg_idx=0, math_svg=N
     final_img = map_img_bytes or (image_bytes if not is_map_query else None)
     if final_img:
         cap = "🗺️ પાઠ્યપુસ્તક શૈલીનો અસલી ભૌગોલિક સરહદો સાથેનો નકશો" if map_img_bytes else "🎨 AI દ્વારા તૈયાર કરેલ ચિત્ર / આકૃતિ"
-        st.image(final_img, caption=cap, use_container_width=True)
+        st.image(final_img, caption=cap, **S_IMG)
         _ = st.download_button(
             "⬇️ નકશો / ચિત્ર ડાઉનલોડ કરો (PNG)",
             data=final_img,
@@ -869,19 +883,19 @@ def render_message_with_visuals(content, image_bytes=None, msg_idx=0, math_svg=N
 
 syllabus_data = load_syllabus()
 
-# --- ZERO-HORIZONTAL-SCROLL & SIDEBAR-AWARE CSS ---
+# --- ROCK-SOLID FIXED BOTTOM INPUT BAR CSS (NEVER DISAPPEARS, 1-LINE ON MOBILE) ---
 st.markdown("""
 <style>
 html, body, [data-testid="stAppViewContainer"], .main {
     overflow-x: hidden !important;
-    max-width: 100% !important;
+    max-width: 100vw !important;
 }
 .block-container {
     max-width: 820px !important;
     width: 100% !important;
     box-sizing: border-box !important;
     padding-top: 2.2rem !important;
-    padding-bottom: 6.5rem !important;
+    padding-bottom: 120px !important;
     padding-left: 0.75rem !important;
     padding-right: 0.75rem !important;
 }
@@ -912,46 +926,84 @@ html, body, [data-testid="stAppViewContainer"], .main {
     margin-bottom: 8px;
 }
 
-/* Bottom Bar: Respects Sidebar on Desktop & Fits 100% on Mobile */
-[data-testid="stBottom"] > div {
+/* Fixed Bottom Input Bar via :has(#palaj-input-anchor) */
+div[data-testid="stVerticalBlock"]:has(> div.element-container #palaj-input-anchor) {
+    position: fixed !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    z-index: 999 !important;
+    background: #FFFFFF !important;
+    border-top: 1px solid #E2E8F0 !important;
+    box-shadow: 0 -4px 14px rgba(15, 23, 42, 0.08) !important;
+    padding: 8px 10px calc(10px + env(safe-area-inset-bottom, 0px)) 10px !important;
+    margin: 0 auto !important;
     max-width: 820px !important;
     width: 100% !important;
-    margin: 0 auto !important;
-    padding: 6px 10px !important;
     box-sizing: border-box !important;
 }
-[data-testid="stBottom"] [data-testid="stHorizontalBlock"] {
+div[data-testid="stVerticalBlock"]:has(> div.element-container #palaj-input-anchor) > div.element-container:first-child {
+    display: none !important;
+}
+/* Desktop: sidebar khullu hoy to input bar sidebar ni jamni baju thi sharu thay (overlap nahi) */
+@media (min-width: 992px) {
+    div[data-testid="stVerticalBlock"]:has(> div.element-container #palaj-input-anchor) {
+        left: var(--palaj-sb, 0px) !important;
+        right: 0 !important;
+        width: auto !important;
+    }
+}
+/* Screenshot paste mate chhupayelu uploader (JS thi file set thay che) */
+[class*="st-key-paste_uploader"] {
+    position: fixed !important;
+    left: -9999px !important;
+    top: 0 !important;
+    width: 1px !important;
+    height: 1px !important;
+    overflow: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+}
+div[data-testid="stVerticalBlock"]:has(> div.element-container #palaj-input-anchor) [data-testid="stHorizontalBlock"] {
     display: flex !important;
     flex-direction: row !important;
     flex-wrap: nowrap !important;
     align-items: flex-end !important;
     gap: 6px !important;
     width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
 }
-[data-testid="stBottom"] [data-testid="stHorizontalBlock"] > [data-testid="column"]:nth-child(1),
-[data-testid="stBottom"] [data-testid="stHorizontalBlock"] > [data-testid="column"]:nth-child(3),
-[data-testid="stBottom"] [data-testid="stHorizontalBlock"] > [data-testid="column"]:nth-child(4) {
+div[data-testid="stVerticalBlock"]:has(> div.element-container #palaj-input-anchor) [data-testid="stHorizontalBlock"] > [data-testid="stColumn"],
+div[data-testid="stVerticalBlock"]:has(> div.element-container #palaj-input-anchor) [data-testid="stHorizontalBlock"] > [data-testid="column"],
+div[data-testid="stVerticalBlock"]:has(> div.element-container #palaj-input-anchor) [data-testid="stHorizontalBlock"] > div {
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+}
+div[data-testid="stVerticalBlock"]:has(> div.element-container #palaj-input-anchor) [data-testid="stHorizontalBlock"] > div:nth-child(1),
+div[data-testid="stVerticalBlock"]:has(> div.element-container #palaj-input-anchor) [data-testid="stHorizontalBlock"] > div:nth-child(3),
+div[data-testid="stVerticalBlock"]:has(> div.element-container #palaj-input-anchor) [data-testid="stHorizontalBlock"] > div:nth-child(4) {
     flex: 0 0 42px !important;
     width: 42px !important;
-    min-width: 42px !important;
     max-width: 42px !important;
 }
-[data-testid="stBottom"] [data-testid="stHorizontalBlock"] > [data-testid="column"]:nth-child(2) {
+div[data-testid="stVerticalBlock"]:has(> div.element-container #palaj-input-anchor) [data-testid="stHorizontalBlock"] > div:nth-child(2) {
     flex: 1 1 auto !important;
-    min-width: 0 !important;
+    width: auto !important;
 }
-[data-testid="stBottom"] textarea {
+div[data-testid="stVerticalBlock"]:has(> div.element-container #palaj-input-anchor) textarea {
     min-height: 44px !important;
-    max-height: 140px !important;
+    max-height: 120px !important;
     overflow-y: auto !important;
     font-size: 15px !important;
     line-height: 1.35 !important;
     border-radius: 12px !important;
     padding: 9px 10px !important;
     width: 100% !important;
+    min-width: 0 !important;
     box-sizing: border-box !important;
 }
-[data-testid="stBottom"] button {
+div[data-testid="stVerticalBlock"]:has(> div.element-container #palaj-input-anchor) button {
     width: 42px !important;
     min-width: 42px !important;
     max-width: 42px !important;
@@ -964,7 +1016,7 @@ html, body, [data-testid="stAppViewContainer"], .main {
     align-items: center !important;
     justify-content: center !important;
 }
-[data-testid="stBottom"] [data-testid="stPopover"] > div > button svg {
+div[data-testid="stVerticalBlock"]:has(> div.element-container #palaj-input-anchor) [data-testid="stPopover"] > div > button svg {
     display: none !important;
 }
 @media (max-width: 640px) {
@@ -992,6 +1044,7 @@ defaults = {
     "mic_open": False,
     "audio_counter": 0,
     "input_version": 0,
+    "att_ver": 0,
 }
 for k, v in defaults.items():
     if k not in st.session_state:
@@ -1018,13 +1071,13 @@ with st.sidebar:
 
     quick_action = None
     c1, c2 = st.columns(2)
-    if c1.button("📖 સારાંશ", use_container_width=True): quick_action = "summary"
-    if c1.button("📝 MCQ ટેસ્ટ", use_container_width=True): quick_action = "mcq"
-    if c2.button("📝 સ્વાધ્યાય", use_container_width=True): quick_action = "exercise"
-    if c2.button("💡 ઉદાહરણ", use_container_width=True): quick_action = "easy_example"
+    if c1.button("📖 સારાંશ", **S_BTN): quick_action = "summary"
+    if c1.button("📝 MCQ ટેસ્ટ", **S_BTN): quick_action = "mcq"
+    if c2.button("📝 સ્વાધ્યાય", **S_BTN): quick_action = "exercise"
+    if c2.button("💡 ઉદાહરણ", **S_BTN): quick_action = "easy_example"
 
     st.divider()
-    if st.button("➕ નવી ચેટ (New Chat)", use_container_width=True):
+    if st.button("➕ નવી ચેટ (New Chat)", **S_BTN):
         sync_current_session()
         st.session_state.messages = []
         st.session_state.active_session_idx = None
@@ -1038,7 +1091,7 @@ with st.sidebar:
     if st.session_state.chat_sessions:
         st.markdown("#### 📜 ચેટ ઇતિહાસ")
         for s_idx, sess in enumerate(st.session_state.chat_sessions[:12]):
-            if st.button(f"💬 {sess['title']}", key=f"hist_sess_{s_idx}", use_container_width=True):
+            if st.button(f"💬 {sess['title']}", key=f"hist_sess_{s_idx}", **S_BTN):
                 sync_current_session()
                 st.session_state.messages = list(sess["messages"])
                 st.session_state.active_session_idx = s_idx
@@ -1053,19 +1106,23 @@ with st.sidebar:
             data=build_pdf_bytes(st.session_state.messages),
             file_name="palaj_classroom_notes.pdf",
             mime="application/pdf",
-            use_container_width=True
+            **S_DL
         )
 
 st.markdown('<div class="slim-header">📚 Standard 3 to 8 Smart AI Palaj Teacher</div>', unsafe_allow_html=True)
 
-# --- PERSISTENT BOTTOM INPUT BAR ---
-attached_file = st.session_state.get("bottom_uploader") or st.session_state.get("bottom_camera")
-with getattr(st, "bottom", st.container()):
+# --- FIXED BOTTOM INPUT BAR (ALWAYS VISIBLE) ---
+_av = st.session_state.att_ver
+K_UP, K_CAM, K_PASTE = f"bottom_uploader_{_av}", f"bottom_camera_{_av}", f"paste_uploader_{_av}"
+attached_file = st.session_state.get(K_UP) or st.session_state.get(K_CAM) or st.session_state.get(K_PASTE)
+with st.container():
+    st.markdown('<div id="palaj-input-anchor"></div>', unsafe_allow_html=True)
     col_plus, col_in, col_mic, col_send = st.columns([1, 8, 1, 1], vertical_alignment="bottom")
     with col_plus:
         with st.popover("➕"):
-            _ = st.file_uploader("📁 ગેલેરી / PDF પસંદ કરો", key="bottom_uploader")
-            _ = st.camera_input("📸 કેમેરાથી ફોટો પાડો", key="bottom_camera")
+            _ = st.file_uploader("📁 ગેલેરી / PDF પસંદ કરો", key=K_UP)
+            _ = st.camera_input("📸 કેમેરાથી ફોટો પાડો", key=K_CAM)
+            st.caption("💻 કમ્પ્યુટર પર સ્ક્રીનશોટ લઈને ચેટમાં Ctrl+V દબાવો — સીધો પેસ્ટ થશે.")
     with col_in:
         user_text = st.text_area(
             "પ્રશ્ન...",
@@ -1082,6 +1139,70 @@ with getattr(st, "bottom", st.container()):
             st.rerun()
     with col_send:
         send_clicked = st.button("➤", type="primary", key="real_send_btn", help="મોકલો")
+
+# Chhupayelu paste-uploader: Ctrl+V nu screenshot aa ma JS thi mukay che (sauthi chhelle DOM ma)
+_ = st.file_uploader("paste", type=["png", "jpg", "jpeg", "webp"], key=K_PASTE, label_visibility="collapsed")
+
+components.html("""
+<script>
+(function () {
+  var D = window.parent.document;
+  if (D.getElementById('palaj-paste-js-v2')) return;
+  var fn = function () {
+    var root = document.documentElement;
+    function toast(msg) {
+      var t = document.createElement('div');
+      t.textContent = msg;
+      t.style.cssText = 'position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:#1E3A8A;color:#fff;padding:8px 14px;border-radius:999px;font-size:14px;z-index:2147483000;box-shadow:0 4px 12px rgba(0,0,0,.25)';
+      document.body.appendChild(t);
+      setTimeout(function () { t.remove(); }, 2200);
+    }
+    document.addEventListener('paste', function (e) {
+      var items = (e.clipboardData && e.clipboardData.items) || [];
+      for (var i = 0; i < items.length; i++) {
+        var it = items[i];
+        if (it.kind === 'file' && it.type.indexOf('image/') === 0) {
+          var f = it.getAsFile();
+          if (!f) continue;
+          var inps = document.querySelectorAll('[class*="st-key-paste_uploader"] input[type="file"]');
+          if (!inps.length) {
+            var all = document.querySelectorAll('input[type="file"]');
+            if (all.length) inps = [all[all.length - 1]];
+          }
+          if (!inps.length) return;
+          var ext = (it.type.split('/')[1] || 'png').replace('jpeg', 'jpg');
+          var file = new File([f], 'screenshot_' + Date.now() + '.' + ext, { type: it.type });
+          var dt = new DataTransfer();
+          dt.items.add(file);
+          var inp = inps[inps.length - 1];
+          inp.files = dt.files;
+          inp.dispatchEvent(new Event('change', { bubbles: true }));
+          e.preventDefault();
+          toast('📋 સ્ક્રીનશોટ જોડાઈ ગયો ✔');
+          return;
+        }
+      }
+    }, true);
+    /* Sidebar ni asli width mujab input bar goth ve (desktop) */
+    function updSb() {
+      var sb = document.querySelector('[data-testid="stSidebar"]');
+      var w = 0;
+      if (sb) {
+        var r = sb.getBoundingClientRect();
+        w = Math.max(0, Math.round(r.right));   /* collapsed hoy to 0 */
+      }
+      root.style.setProperty('--palaj-sb', w + 'px');
+    }
+    updSb();
+    setInterval(updSb, 150);
+  };
+  var s = D.createElement('script');
+  s.id = 'palaj-paste-js-v2';
+  s.textContent = '(' + fn.toString() + ')();';
+  D.head.appendChild(s);
+})();
+</script>
+""", height=0)
 
 if send_clicked and (user_text.strip() or attached_file):
     st.session_state.messages.append({"role": "user", "content": user_text.strip() or "[કેમેરા / ફાઈલ સંલગ્ન છે]"})
@@ -1148,10 +1269,7 @@ if attached_file:
             c_img.markdown("📎")
         c_txt.caption(f"📎 સંલગ્ન ફાઈલ / કેમેરા ફોટો: {getattr(attached_file, 'name', 'Camera Photo')}")
         if c_rm.button("❌", key="rm_att_btn"):
-            if "bottom_uploader" in st.session_state:
-                del st.session_state["bottom_uploader"]
-            if "bottom_camera" in st.session_state:
-                del st.session_state["bottom_camera"]
+            st.session_state.att_ver += 1
             st.rerun()
 
 # --- GENERATE ASSISTANT RESPONSE ---
@@ -1162,17 +1280,18 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "user"
             st.error("⚠️ Secrets માં GEMINI_API_KEY દાખલ કરો.")
         else:
             user_att_parts = []
-            att = st.session_state.get("bottom_uploader") or st.session_state.get("bottom_camera")
+            att = attached_file
+            had_attachment = bool(att)
+            computed_map_bytes = None
             if att:
-                fb = att.getvalue()
-                if getattr(att, "type", "") == "application/pdf":
-                    user_att_parts.append(types.Part.from_bytes(data=fb, mime_type="application/pdf"))
-                else:
-                    user_att_parts.append(Image.open(io.BytesIO(fb)))
-            if "bottom_uploader" in st.session_state:
-                del st.session_state["bottom_uploader"]
-            if "bottom_camera" in st.session_state:
-                del st.session_state["bottom_camera"]
+                try:
+                    fb = att.getvalue()
+                    if getattr(att, "type", "") == "application/pdf":
+                        user_att_parts.append(types.Part.from_bytes(data=fb, mime_type="application/pdf"))
+                    else:
+                        user_att_parts.append(Image.open(io.BytesIO(fb)))
+                except Exception:
+                    user_att_parts = []
 
             grade, subject, local_pdf_paths = resolve_grade_subject_and_pdfs(clean_q, syllabus_data)
             is_map_q = wants_map(clean_q)
@@ -1262,9 +1381,13 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "user"
                     "raw_query": clean_q
                 })
                 sync_current_session()
+                if had_attachment:
+                    st.session_state.att_ver += 1
                 if quick_action == "mcq" and st.session_state.mcq_questions is None:
                     if parsed := parse_mcq(answer_text):
                         st.session_state.mcq_questions = parsed
+                    st.rerun()
+                elif had_attachment:
                     st.rerun()
             else:
                 placeholder.empty()
